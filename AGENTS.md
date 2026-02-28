@@ -78,7 +78,7 @@ class ServiceConsumer {
 2.  Existing constructors are modified to accept an instance of the service as a parameter
     and a delegate constructor with original signature is added that delegates construction to new constructor and getting the service using `Service.instance()`.
 3.  If no constructors exist, a new one is created that accepts the service and a default constructor is added that initializes the service using `Service.instance()`.
-5.  All static method calls are updated to use the new service field.
+5.  Static method calls are updated to use the new service field, if invocation is from non-static method. If calling site is static method, then invocation should not be changed. Also calls from lambda expressions should follow previous rule.
 
 ### With extractServiceInterface Parameter
 

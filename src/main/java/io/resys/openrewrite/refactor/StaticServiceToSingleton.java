@@ -277,27 +277,68 @@ public class StaticServiceToSingleton extends Recipe {
             }
 
             private J.ClassDeclaration refactorConsumerClass(J.ClassDeclaration cd, ExecutionContext ctx) {
-                AtomicBoolean foundUsage = new AtomicBoolean(false);
+                // Check if there's usage from non-static context
+                AtomicBoolean foundUsageInNonStaticContext = new AtomicBoolean(false);
                 new JavaIsoVisitor<ExecutionContext>() {
                     @Override
                     public J.MethodInvocation visitMethodInvocation(J.MethodInvocation method, ExecutionContext ctx) {
                         if (method.getMethodType() != null && TypeUtils.isOfClassType(method.getMethodType().getDeclaringType(), serviceClassName)) {
-                            foundUsage.set(true);
+                            // Check if we're in a non-static method
+                            Cursor parentCursor = getCursor();
+                            while (parentCursor != null) {
+                                Object value = parentCursor.getValue();
+                                if (value instanceof J.MethodDeclaration) {
+                                    J.MethodDeclaration containingMethod = (J.MethodDeclaration) value;
+                                    if (!containingMethod.hasModifier(J.Modifier.Type.Static)) {
+                                        // Found usage in a non-static method
+                                        foundUsageInNonStaticContext.set(true);
+                                    }
+                                    break;
+                                }
+                                if (value instanceof J.ClassDeclaration) {
+                                    // Reached class level (e.g., field initializer)
+                                    break;
+                                }
+                                parentCursor = parentCursor.getParent();
+                            }
                         }
                         return super.visitMethodInvocation(method, ctx);
                     }
                 }.visit(cd, ctx, getCursor());
-                if (!foundUsage.get()) return cd;
+
+                // Only refactor if there's usage from non-static context
+                if (!foundUsageInNonStaticContext.get()) return cd;
 
                 String serviceSimpleName = serviceClassName.substring(serviceClassName.lastIndexOf('.') + 1);
                 String serviceTypeName = Boolean.TRUE.equals(extractServiceInterface) ? "I" + serviceSimpleName : serviceSimpleName;
                 String fieldName = Character.toLowerCase(serviceSimpleName.charAt(0)) + serviceSimpleName.substring(1);
 
-                // pass 1: update method calls
+                // pass 1: update method calls (only in non-static methods)
                 cd = (J.ClassDeclaration) new JavaIsoVisitor<ExecutionContext>() {
                     @Override
                     public J.MethodInvocation visitMethodInvocation(J.MethodInvocation method, ExecutionContext ctx) {
                         if (method.getMethodType() != null && TypeUtils.isOfClassType(method.getMethodType().getDeclaringType(), serviceClassName) && !method.getSimpleName().equals("instance")) {
+                            // Check if we're in a static method - if so, don't transform
+                            Cursor parentCursor = getCursor();
+                            while (parentCursor != null) {
+                                Object value = parentCursor.getValue();
+                                if (value instanceof J.MethodDeclaration) {
+                                    J.MethodDeclaration containingMethod = (J.MethodDeclaration) value;
+                                    if (containingMethod.hasModifier(J.Modifier.Type.Static)) {
+                                        // In a static method, don't transform the call
+                                        return super.visitMethodInvocation(method, ctx);
+                                    }
+                                    // In a non-static method, transform the call
+                                    break;
+                                }
+                                if (value instanceof J.ClassDeclaration) {
+                                    // Reached class level without finding a method (e.g., field initializer)
+                                    return super.visitMethodInvocation(method, ctx);
+                                }
+                                parentCursor = parentCursor.getParent();
+                            }
+
+                            // Transform the call to use the instance field
                             return method.withSelect(new J.Identifier(Tree.randomId(), Space.EMPTY, Markers.EMPTY, fieldName, method.getMethodType().getDeclaringType(), null));
                         }
                         return super.visitMethodInvocation(method, ctx);

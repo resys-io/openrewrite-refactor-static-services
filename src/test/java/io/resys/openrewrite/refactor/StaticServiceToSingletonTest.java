@@ -423,4 +423,170 @@ class StaticServiceToSingletonTest implements RewriteTest {
             )
         );
     }
+
+    @Test
+    void doNotTransformStaticMethodCalls() {
+        rewriteRun(
+            java(
+                """
+                package com.example;
+
+                class Service {
+                    public static void action() { }
+                }
+                """,
+                """
+                package com.example;
+
+                class Service {
+                    private static final Service INSTANCE = new Service();
+
+                    public void action() {
+                    }
+
+                    public static Service instance() {
+                        return INSTANCE;
+                    }
+                }
+                """
+            ),
+            java(
+                """
+                package com.example;
+
+                class ServiceConsumer {
+                    public void nonStaticMethod() {
+                        Service.action();
+                    }
+
+                    public static void staticMethod() {
+                        Service.action();
+                    }
+                }
+                """,
+                """
+                package com.example;
+
+                class ServiceConsumer {
+                    private final Service service;
+
+                    public ServiceConsumer(Service service) {
+                        this.service = service;
+                    }
+
+                    public ServiceConsumer() {
+                        this(Service.instance());
+                    }
+
+                    public void nonStaticMethod() {
+                        service.action();
+                    }
+
+                    public static void staticMethod() {
+                        Service.action();
+                    }
+                }
+                """
+            )
+        );
+    }
+
+    @Test
+    void transformLambdaInNonStaticMethod() {
+        rewriteRun(
+            java(
+                """
+                package com.example;
+
+                class Service {
+                    public static void action() { }
+                }
+                """,
+                """
+                package com.example;
+
+                class Service {
+                    private static final Service INSTANCE = new Service();
+
+                    public void action() {
+                    }
+
+                    public static Service instance() {
+                        return INSTANCE;
+                    }
+                }
+                """
+            ),
+            java(
+                """
+                package com.example;
+
+                class ServiceConsumer {
+                    public void nonStaticMethod() {
+                        Runnable r = () -> Service.action();
+                    }
+                }
+                """,
+                """
+                package com.example;
+
+                class ServiceConsumer {
+                    private final Service service;
+
+                    public ServiceConsumer(Service service) {
+                        this.service = service;
+                    }
+
+                    public ServiceConsumer() {
+                        this(Service.instance());
+                    }
+
+                    public void nonStaticMethod() {
+                        Runnable r = () -> service.action();
+                    }
+                }
+                """
+            )
+        );
+    }
+
+    @Test
+    void doNotTransformLambdaInStaticMethod() {
+        rewriteRun(
+            java(
+                """
+                package com.example;
+
+                class Service {
+                    public static void action() { }
+                }
+                """,
+                """
+                package com.example;
+
+                class Service {
+                    private static final Service INSTANCE = new Service();
+
+                    public void action() {
+                    }
+
+                    public static Service instance() {
+                        return INSTANCE;
+                    }
+                }
+                """
+            ),
+            java(
+                """
+                package com.example;
+
+                class ServiceConsumer {
+                    public static void staticMethod() {
+                        Runnable r = () -> Service.action();
+                    }
+                }
+                """
+            )
+        );
+    }
 }
