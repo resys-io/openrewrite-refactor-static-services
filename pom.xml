@@ -12,7 +12,7 @@
     <maven.compiler.source>21</maven.compiler.source>
     <maven.compiler.target>21</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <rewrite.version>8.13.4</rewrite.version>
+    <rewrite.version>8.74.2</rewrite.version>
   </properties>
 
   <dependencies>

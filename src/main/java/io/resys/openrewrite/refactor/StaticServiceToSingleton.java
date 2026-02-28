@@ -4,17 +4,9 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.EqualsAndHashCode;
 import lombok.Value;
-import org.openrewrite.Cursor;
-import org.openrewrite.ExecutionContext;
-import org.openrewrite.Option;
-import org.openrewrite.Recipe;
-import org.openrewrite.RecipeRun;
-import org.openrewrite.Result;
-import org.openrewrite.SourceFile;
-import org.openrewrite.Tree;
-import org.openrewrite.TreeVisitor;
+import org.jspecify.annotations.Nullable;
+import org.openrewrite.*;
 import org.openrewrite.internal.ListUtils;
-import org.openrewrite.internal.lang.Nullable;
 import org.openrewrite.java.JavaIsoVisitor;
 import org.openrewrite.java.JavaParser;
 import org.openrewrite.java.JavaTemplate;
@@ -22,11 +14,7 @@ import org.openrewrite.java.format.AutoFormat;
 import org.openrewrite.java.tree.*;
 import org.openrewrite.marker.Markers;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
@@ -79,6 +67,7 @@ public class StaticServiceToSingleton extends Recipe {
             @JsonProperty("addDefaultConstructorToConsumers") @Nullable Boolean addDefaultConstructorToConsumers,
             @JsonProperty("addStaticDelegateMethods") @Nullable Boolean addStaticDelegateMethods,
             @JsonProperty("extractServiceInterface") @Nullable Boolean extractServiceInterface) {
+        super();
         this.serviceClassName = serviceClassName;
         this.annotateMethods = annotateMethods;
         this.annotateConstructors = annotateConstructors;
@@ -86,6 +75,12 @@ public class StaticServiceToSingleton extends Recipe {
         this.addStaticDelegateMethods = addStaticDelegateMethods;
         this.extractServiceInterface = extractServiceInterface;
     }
+
+    @Override
+    public boolean causesAnotherCycle() {
+        return true;
+    }
+
 
     @Override
     public String getDisplayName() {
@@ -273,7 +268,7 @@ public class StaticServiceToSingleton extends Recipe {
                     cd = cd.withImplements(cdWithInterface.getImplements());
                 }
 
-                return (J.ClassDeclaration) new AutoFormat().getVisitor().visit(cd, ctx, getCursor());
+                return (J.ClassDeclaration) new AutoFormat(null).getVisitor().visit(cd, ctx, getCursor());
             }
 
             private J.ClassDeclaration refactorConsumerClass(J.ClassDeclaration cd, ExecutionContext ctx) {
@@ -339,7 +334,7 @@ public class StaticServiceToSingleton extends Recipe {
                             }
 
                             // Transform the call to use the instance field
-                            return method.withSelect(new J.Identifier(Tree.randomId(), Space.EMPTY, Markers.EMPTY, fieldName, method.getMethodType().getDeclaringType(), null));
+                            return method.withSelect(new J.Identifier(Tree.randomId(), Space.EMPTY, Markers.EMPTY, List.of(), fieldName, method.getMethodType().getDeclaringType(), null));
                         }
                         return super.visitMethodInvocation(method, ctx);
                     }
@@ -433,6 +428,7 @@ public class StaticServiceToSingleton extends Recipe {
                                                     Tree.randomId(),
                                                     Space.EMPTY,
                                                     Markers.EMPTY,
+                                                    List.of(),
                                                     fieldName,
                                                     null,
                                                     null
@@ -477,7 +473,7 @@ public class StaticServiceToSingleton extends Recipe {
                     })));
                 }
 
-                doAfterVisit(new AutoFormat().getVisitor());
+                doAfterVisit(new AutoFormat(null).getVisitor());
                 return cd;
             }
         };

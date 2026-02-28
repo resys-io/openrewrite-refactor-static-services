@@ -12,12 +12,14 @@ class StaticServiceToSingletonTest implements RewriteTest {
     @Override
     public void defaults(RecipeSpec spec) {
         spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, false, false))
+          .expectedCyclesThatMakeChanges(2)
             .typeValidationOptions(TypeValidation.none());
     }
 
     @Test
     void refactorServiceClass() {
         rewriteRun(
+          spec -> spec.expectedCyclesThatMakeChanges(1),
             java(
                 """
                 package com.example;
@@ -168,7 +170,8 @@ class StaticServiceToSingletonTest implements RewriteTest {
     @Test
     void refactorWithStaticDelegateMethods() {
         rewriteRun(
-            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, true, false)),
+            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, true, false))
+              .expectedCyclesThatMakeChanges(1),
             java(
                 """
                 package com.example;
@@ -553,6 +556,7 @@ class StaticServiceToSingletonTest implements RewriteTest {
     @Test
     void doNotTransformLambdaInStaticMethod() {
         rewriteRun(
+          spec -> spec.expectedCyclesThatMakeChanges(1),
             java(
                 """
                 package com.example;
