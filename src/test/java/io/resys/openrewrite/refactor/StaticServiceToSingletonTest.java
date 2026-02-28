@@ -373,11 +373,6 @@ class StaticServiceToSingletonTest implements RewriteTest {
                 """
                 package com.example;
 
-                interface IService {
-                    void action();
-                    String getData(int id);
-                }
-
                 class Service implements IService {
                     private static final Service INSTANCE = new Service();
 
@@ -393,6 +388,18 @@ class StaticServiceToSingletonTest implements RewriteTest {
                     }
                 }
                 """
+            ),
+            java(
+                null,
+                """
+                package com.example;
+
+                public interface IService {
+                    void action();
+                    String getData(int id);
+                }
+                """,
+                spec -> spec.path("com/example/IService.java")
             ),
             java(
                 """
