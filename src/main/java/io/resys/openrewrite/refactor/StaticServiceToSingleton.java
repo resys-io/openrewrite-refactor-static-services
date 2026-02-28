@@ -19,6 +19,8 @@ import org.openrewrite.java.tree.*;
 import org.openrewrite.marker.Markers;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -178,79 +180,8 @@ public class StaticServiceToSingleton extends Recipe {
                 String serviceSimpleName = serviceClassName.substring(serviceClassName.lastIndexOf('.') + 1);
                 String fieldName = Character.toLowerCase(serviceSimpleName.charAt(0)) + serviceSimpleName.substring(1);
 
-                return (J.ClassDeclaration) new JavaIsoVisitor<ExecutionContext>() {
-                    @Override
-                    public J.ClassDeclaration visitClassDeclaration(J.ClassDeclaration classDecl, ExecutionContext ctx) {
-                        J.ClassDeclaration c = super.visitClassDeclaration(classDecl, ctx);
-
-                        // 1. Add constructors if missing
-                        boolean hasConstructor = c.getBody().getStatements().stream().anyMatch(s -> s instanceof J.MethodDeclaration && ((J.MethodDeclaration)s).isConstructor());
-                        if (!hasConstructor) {
-                             String annotation = annotateConstructors != null ? "@" + annotateConstructors.substring(annotateConstructors.lastIndexOf('.') + 1) + "\n" : "";
-                             String template = annotation + "public " + c.getSimpleName() + "(" + serviceSimpleName + " " + fieldName + ") {\n    this." + fieldName + " = " + fieldName + ";\n}";
-                             if (Boolean.TRUE.equals(addDefaultConstructorToConsumers)) {
-                                 template += "\npublic " + c.getSimpleName() + "() {\n    this(" + serviceSimpleName + ".instance());\n}";
-                             }
-                             c = JavaTemplate.builder(template).imports(serviceClassName).contextSensitive().build().apply(new Cursor(getCursor().getParent(), c), c.getBody().getCoordinates().firstStatement());
-                             if (annotateConstructors != null) maybeAddImport(annotateConstructors);
-                        } else if (Boolean.TRUE.equals(addDefaultConstructorToConsumers)) {
-                             // Add default constructor if missing
-                             boolean hasDefault = c.getBody().getStatements().stream()
-                                     .filter(s -> s instanceof J.MethodDeclaration && ((J.MethodDeclaration)s).isConstructor())
-                                     .map(s -> (J.MethodDeclaration)s)
-                                     .anyMatch(m -> m.getParameters().isEmpty() || (m.getParameters().size() == 1 && m.getParameters().get(0) instanceof J.Empty));
-                             if (!hasDefault) {
-                                 J.MethodDeclaration target = (J.MethodDeclaration) c.getBody().getStatements().stream().filter(s -> s instanceof J.MethodDeclaration && ((J.MethodDeclaration)s).isConstructor()).findFirst().get();
-                                 StringBuilder args = new StringBuilder();
-                                 for (int j = 0; j < target.getParameters().size(); j++) {
-                                     Statement p = target.getParameters().get(j);
-                                     if (p instanceof J.VariableDeclarations) {
-                                         if (j > 0) args.append(", ");
-                                         if (p.print(getCursor()).contains(serviceSimpleName)) args.append(serviceSimpleName).append(".instance()");
-                                         else args.append("null");
-                                     }
-                                 }
-                                 c = JavaTemplate.builder("public " + c.getSimpleName() + "() {\n    this(" + args + ");\n}").contextSensitive().build().apply(new Cursor(getCursor().getParent(), c), target.getCoordinates().after());
-                             }
-                        }
-
-                        // 2. Add field if missing (DO THIS LAST to ensure it's at the top)
-                        boolean hasField = c.getBody().getStatements().stream().anyMatch(s -> s instanceof J.VariableDeclarations && ((J.VariableDeclarations)s).getVariables().stream().anyMatch(v -> v.getSimpleName().equals(fieldName)));
-                        if (!hasField) {
-                            c = JavaTemplate.builder("private final " + serviceSimpleName + " " + fieldName + ";")
-                                    .imports(serviceClassName).contextSensitive().build().apply(new Cursor(getCursor().getParent(), c), c.getBody().getCoordinates().firstStatement());
-                            maybeAddImport(serviceClassName);
-                        }
-
-                        return (J.ClassDeclaration) new AutoFormat().getVisitor().visit(c, ctx, getCursor().getParent());
-                    }
-
-                    @Override
-                    public J.MethodDeclaration visitMethodDeclaration(J.MethodDeclaration method, ExecutionContext ctx) {
-                        if (method.isConstructor()) {
-                            String source = method.print(getCursor());
-                            if (source.contains(serviceSimpleName + " " + fieldName) || source.contains(serviceSimpleName + ".instance()")) {
-                                return method;
-                            }
-                            
-                            boolean isZeroArg = method.getParameters().isEmpty() || (method.getParameters().size() == 1 && method.getParameters().get(0) instanceof J.Empty);
-                            if (isZeroArg && Boolean.TRUE.equals(addDefaultConstructorToConsumers)) {
-                                return method;
-                            }
-
-                            String currentParams = method.getParameters().stream().filter(p -> !(p instanceof J.Empty)).map(p -> p.print(getCursor())).collect(Collectors.joining(", "));
-                            String newParams = currentParams.isEmpty() ? serviceSimpleName + " " + fieldName : currentParams + ", " + serviceSimpleName + " " + fieldName;
-                            J.MethodDeclaration m = JavaTemplate.builder(newParams).imports(serviceClassName).contextSensitive().build().apply(getCursor(), method.getCoordinates().replaceParameters());
-                            m = JavaTemplate.builder("this." + fieldName + " = " + fieldName + ";").contextSensitive().build().apply(new Cursor(getCursor(), m), m.getBody().getCoordinates().lastStatement());
-                            if (annotateConstructors != null && !m.getLeadingAnnotations().stream().anyMatch(a -> a.print(getCursor()).contains(annotateConstructors.substring(annotateConstructors.lastIndexOf('.') + 1)))) {
-                                 m = JavaTemplate.builder("@" + annotateConstructors.substring(annotateConstructors.lastIndexOf('.') + 1)).contextSensitive().build().apply(new Cursor(getCursor(), m), m.getCoordinates().addAnnotation((a1, a2) -> 0));
-                                 maybeAddImport(annotateConstructors);
-                            }
-                            return m;
-                        }
-                        return super.visitMethodDeclaration(method, ctx);
-                    }
-
+                // pass 1: update method calls
+                cd = (J.ClassDeclaration) new JavaIsoVisitor<ExecutionContext>() {
                     @Override
                     public J.MethodInvocation visitMethodInvocation(J.MethodInvocation method, ExecutionContext ctx) {
                         if (method.getMethodType() != null && TypeUtils.isOfClassType(method.getMethodType().getDeclaringType(), serviceClassName) && !method.getSimpleName().equals("instance")) {
@@ -259,6 +190,141 @@ public class StaticServiceToSingleton extends Recipe {
                         return super.visitMethodInvocation(method, ctx);
                     }
                 }.visit(cd, ctx, getCursor());
+
+                // pass 2: add field
+                boolean fieldExists = cd.getBody().getStatements().stream().anyMatch(s -> s instanceof J.VariableDeclarations && ((J.VariableDeclarations) s).getVariables().stream().anyMatch(v -> v.getSimpleName().equals(fieldName)));
+                if (!fieldExists) {
+                    J.ClassDeclaration tempCd = JavaTemplate.builder("private final " + serviceSimpleName + " " + fieldName + ";")
+                            .imports(serviceClassName).contextSensitive().build().apply(new Cursor(getCursor(), cd), cd.getBody().getCoordinates().firstStatement());
+                    cd = cd.withBody(cd.getBody().withStatements(ListUtils.concat(tempCd.getBody().getStatements().get(0), cd.getBody().getStatements())));
+                    maybeAddImport(serviceClassName);
+                }
+
+                // pass 3: transform constructors
+                boolean hasConstructors = cd.getBody().getStatements().stream().anyMatch(s -> s instanceof J.MethodDeclaration && ((J.MethodDeclaration) s).isConstructor());
+                if (!hasConstructors) {
+                    String annotation = annotateConstructors != null ? "@" + annotateConstructors.substring(annotateConstructors.lastIndexOf('.') + 1) + "\n" : "";
+                    String template = annotation + "public " + cd.getSimpleName() + "(" + serviceSimpleName + " " + fieldName + ") {\n    this." + fieldName + " = " + fieldName + ";\n}";
+                    if (Boolean.TRUE.equals(addDefaultConstructorToConsumers)) {
+                        template += "\npublic " + cd.getSimpleName() + "() {\n    this(" + serviceSimpleName + ".instance());\n}";
+                    }
+                    J.ClassDeclaration tempCd = JavaTemplate.builder(template).imports(serviceClassName).contextSensitive().build().apply(new Cursor(getCursor(), cd), cd.getBody().getCoordinates().lastStatement());
+                    List<Statement> newConstructors = tempCd.getBody().getStatements().stream()
+                            .filter(s -> s instanceof J.MethodDeclaration && ((J.MethodDeclaration) s).isConstructor())
+                            .map(s -> (Statement) s.withId(Tree.randomId()))
+                            .collect(Collectors.toList());
+
+                    // Insert constructors after fields but before methods
+                    List<Statement> newStatements = new ArrayList<>();
+                    boolean constructorsInserted = false;
+                    for (Statement s : cd.getBody().getStatements()) {
+                        if (!constructorsInserted && s instanceof J.MethodDeclaration && !((J.MethodDeclaration) s).isConstructor()) {
+                            newStatements.addAll(newConstructors);
+                            constructorsInserted = true;
+                        }
+                        newStatements.add(s);
+                    }
+                    if (!constructorsInserted) {
+                        newStatements.addAll(newConstructors);
+                    }
+                    cd = cd.withBody(cd.getBody().withStatements(newStatements));
+                    if (annotateConstructors != null) maybeAddImport(annotateConstructors);
+                } else {
+                    // Create helper statements
+                    J.ClassDeclaration helperCd = JavaTemplate.builder("public void helper(" + serviceSimpleName + " " + fieldName + ") { this." + fieldName + " = " + fieldName + "; }")
+                            .imports(serviceClassName).contextSensitive().build().apply(new Cursor(getCursor(), cd), cd.getBody().getCoordinates().firstStatement());
+                    J.MethodDeclaration helperM = (J.MethodDeclaration) helperCd.getBody().getStatements().get(0);
+                    Statement serviceParam = helperM.getParameters().get(0);
+                    Statement assignmentStat = helperM.getBody().getStatements().get(0);
+
+                    final J.ClassDeclaration cdFinal = cd;
+                    cd = cd.withBody(cd.getBody().withStatements(ListUtils.flatMap(cd.getBody().getStatements(), s -> {
+                        if (s instanceof J.MethodDeclaration && ((J.MethodDeclaration) s).isConstructor()) {
+                            J.MethodDeclaration m = (J.MethodDeclaration) s;
+
+                            // Check if constructor already has service parameter
+                            boolean hasServiceParam = m.getParameters().stream()
+                                    .filter(p -> p instanceof J.VariableDeclarations)
+                                    .anyMatch(p -> ((J.VariableDeclarations)p).getVariables().stream()
+                                            .anyMatch(v -> v.getSimpleName().equals(fieldName)));
+
+                            // Check if constructor already delegates to Service.instance()
+                            boolean delegatesToService = m.getBody() != null && m.getBody().getStatements().stream()
+                                    .filter(st -> st instanceof J.MethodInvocation)
+                                    .filter(st -> ((J.MethodInvocation)st).getSimpleName().equals("this"))
+                                    .anyMatch(st -> ((J.MethodInvocation)st).getArguments().stream()
+                                            .anyMatch(arg -> arg.print(getCursor()).contains(".instance()")));
+
+                            boolean alreadyProcessed = hasServiceParam || delegatesToService;
+
+                            if (alreadyProcessed) return Collections.singletonList(s);
+
+                            // Full Constructor - filter out empty parameters before adding service parameter
+                            List<Statement> nonEmptyParams = m.getParameters().stream()
+                                    .filter(p -> !(p instanceof J.Empty))
+                                    .collect(Collectors.toList());
+                            nonEmptyParams.add(serviceParam.withId(Tree.randomId()));
+                            J.MethodDeclaration mFull = m.withParameters(nonEmptyParams);
+                            mFull = mFull.withId(Tree.randomId());
+
+                            boolean hasThis = mFull.getBody().getStatements().stream().anyMatch(st -> st instanceof J.MethodInvocation && ((J.MethodInvocation)st).getSimpleName().equals("this"));
+                            if (hasThis) {
+                                // Update this() call to add service parameter
+                                mFull = (J.MethodDeclaration) new JavaIsoVisitor<ExecutionContext>() {
+                                    @Override
+                                    public J.MethodInvocation visitMethodInvocation(J.MethodInvocation method, ExecutionContext ctx) {
+                                        if (method.getSimpleName().equals("this")) {
+                                            // Add the service field as an argument to the this() call
+                                            J.Identifier serviceArg = new J.Identifier(
+                                                    Tree.randomId(),
+                                                    Space.EMPTY,
+                                                    Markers.EMPTY,
+                                                    fieldName,
+                                                    null,
+                                                    null
+                                            );
+                                            return method.withArguments(ListUtils.<Expression>concat(method.getArguments(), serviceArg));
+                                        }
+                                        return super.visitMethodInvocation(method, ctx);
+                                    }
+                                }.visitNonNull(mFull, ctx, getCursor());
+                            } else {
+                                mFull = mFull.withBody(mFull.getBody().withStatements(ListUtils.<Statement>concat(mFull.getBody().getStatements(), assignmentStat.withId(Tree.randomId()))));
+                            }
+                            
+                            if (annotateConstructors != null && !mFull.getLeadingAnnotations().stream().anyMatch(a -> a.print(getCursor()).contains(annotateConstructors.substring(annotateConstructors.lastIndexOf('.') + 1)))) {
+                                 mFull = JavaTemplate.builder("@" + annotateConstructors.substring(annotateConstructors.lastIndexOf('.') + 1)).contextSensitive().build().apply(new Cursor(getCursor(), mFull), mFull.getCoordinates().addAnnotation((a1, a2) -> 0));
+                                 maybeAddImport(annotateConstructors);
+                            }
+
+                            // Delegating Constructor - use template to create delegate body
+                            String args = m.getParameters().stream()
+                                    .filter(p -> p instanceof J.VariableDeclarations)
+                                    .map(p -> ((J.VariableDeclarations)p).getVariables().get(0).getSimpleName())
+                                    .collect(Collectors.joining(", "));
+                            String delegatingArgs = args.isEmpty() ? serviceSimpleName + ".instance()" : args + ", " + serviceSimpleName + ".instance()";
+
+                            // Create a temporary method to extract the delegate body from
+                            String tempMethod = "void temp() { this(" + delegatingArgs + "); }";
+                            J.ClassDeclaration tempClass = JavaTemplate.builder(tempMethod)
+                                    .imports(serviceClassName)
+                                    .contextSensitive()
+                                    .build()
+                                    .apply(new Cursor(getCursor().getParent(), cdFinal), cdFinal.getBody().getCoordinates().lastStatement());
+                            J.MethodDeclaration tempMethodDecl = (J.MethodDeclaration) tempClass.getBody().getStatements()
+                                    .get(tempClass.getBody().getStatements().size() - 1);
+                            J.Block delegateBlock = tempMethodDecl.getBody();
+
+                            J.MethodDeclaration mDelegate = m.withBody(delegateBlock).withId(Tree.randomId());
+
+                            return Arrays.asList(mFull, mDelegate);
+                        }
+                        return Collections.singletonList(s);
+                    })));
+                }
+
+                doAfterVisit(new AutoFormat().getVisitor());
+                return cd;
             }
         };
     }

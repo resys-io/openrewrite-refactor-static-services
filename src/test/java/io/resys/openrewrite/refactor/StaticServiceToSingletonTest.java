@@ -84,7 +84,6 @@ class StaticServiceToSingletonTest implements RewriteTest {
                 package com.example;
                 
                 class ServiceConsumer {
-                
                     private final Service service;
                 
                     public ServiceConsumer(Service service) {
@@ -146,7 +145,6 @@ class StaticServiceToSingletonTest implements RewriteTest {
                 package com.example;
                 
                 class ServiceConsumer {
-                
                     private final Service service;
                 
                     @Inject
@@ -243,7 +241,78 @@ class StaticServiceToSingletonTest implements RewriteTest {
                 package com.example;
                 
                 class ServiceConsumer {
+
                     private String name;
+                    public ServiceConsumer(String name) {
+                        this.name = name;
+                    }
+                    public void doThing() {
+                        Service.action();
+                    }
+                }
+                """,
+                """
+                package com.example;
+                
+                class ServiceConsumer {
+                
+                    private final Service service;
+
+                    private String name;
+                
+                    public ServiceConsumer(String name, Service service) {
+                        this.name = name;
+                        this.service = service;
+                    }
+                
+                    public ServiceConsumer(String name) {
+                        this(name, Service.instance());
+                    }
+                
+                    public void doThing() {
+                        service.action();
+                    }
+                }
+                """
+            )
+        );
+    }
+
+    @Test
+    void modifyExistingConstructorWithDelegation() {
+        rewriteRun(
+            java(
+                """
+                package com.example;
+                
+                class Service {
+                    public static void action() { }
+                }
+                """,
+                """
+                package com.example;
+                
+                class Service {
+                    private static final Service INSTANCE = new Service();
+                
+                    public void action() {
+                    }
+                
+                    public static Service instance() {
+                        return INSTANCE;
+                    }
+                }
+                """
+            ),
+            java(
+                """
+                package com.example;
+                
+                class ServiceConsumer {
+                    private String name;
+                    public ServiceConsumer() {
+                        this("default");
+                    }
                     public ServiceConsumer(String name) {
                         this.name = name;
                     }
@@ -259,13 +328,21 @@ class StaticServiceToSingletonTest implements RewriteTest {
                     private final Service service;
                     private String name;
                 
+                    public ServiceConsumer(Service service) {
+                        this("default", service);
+                    }
+                
+                    public ServiceConsumer() {
+                        this(Service.instance());
+                    }
+                
                     public ServiceConsumer(String name, Service service) {
                         this.name = name;
                         this.service = service;
                     }
                 
-                    public ServiceConsumer() {
-                        this(null, Service.instance());
+                    public ServiceConsumer(String name) {
+                        this(name, Service.instance());
                     }
                 
                     public void doThing() {

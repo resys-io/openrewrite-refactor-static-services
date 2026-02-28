@@ -75,9 +75,9 @@ class ServiceConsumer {
 ### Changes Made to ServiceConsumer Classes
 
 1.  A new `private final` field is added to hold a reference to the service.
-2.  Existing constructors are modified to accept an instance of the service as a parameter.
-3.  If no constructors exist, a new one is created that accepts the service.
-4.  Optionally, a default constructor is added that initializes the service using `Service.instance()`.
+2.  Existing constructors are modified to accept an instance of the service as a parameter
+    and a delegate constructor with original signature is added that delegates construction to new constructor and getting the service using `Service.instance()`.
+3.  If no constructors exist, a new one is created that accepts the service and a default constructor is added that initializes the service using `Service.instance()`.
 5.  All static method calls are updated to use the new service field.
 
 ## Recipe Parameters
