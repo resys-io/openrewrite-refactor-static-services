@@ -11,7 +11,7 @@ class StaticServiceToSingletonTest implements RewriteTest {
 
     @Override
     public void defaults(RecipeSpec spec) {
-        spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, false))
+        spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, false, false))
             .typeValidationOptions(TypeValidation.none());
     }
 
@@ -106,7 +106,7 @@ class StaticServiceToSingletonTest implements RewriteTest {
     @Test
     void refactorWithAnnotations() {
         rewriteRun(
-            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", "javax.inject.Singleton", "javax.inject.Inject", true, false)),
+            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", "javax.inject.Singleton", "javax.inject.Inject", true, false, false)),
             java(
                 """
                 package com.example;
@@ -168,7 +168,7 @@ class StaticServiceToSingletonTest implements RewriteTest {
     @Test
     void refactorWithStaticDelegateMethods() {
         rewriteRun(
-            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, true)),
+            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, true, false)),
             java(
                 """
                 package com.example;
@@ -345,6 +345,76 @@ class StaticServiceToSingletonTest implements RewriteTest {
                         this(name, Service.instance());
                     }
                 
+                    public void doThing() {
+                        service.action();
+                    }
+                }
+                """
+            )
+        );
+    }
+
+    @Test
+    void extractServiceInterface() {
+        rewriteRun(
+            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, false, true)),
+            java(
+                """
+                package com.example;
+
+                class Service {
+                    public static void action() { }
+                    public static String getData(int id) { return "data"; }
+                }
+                """,
+                """
+                package com.example;
+
+                interface IService {
+                    void action();
+                    String getData(int id);
+                }
+
+                class Service implements IService {
+                    private static final Service INSTANCE = new Service();
+
+                    public void action() {
+                    }
+
+                    public String getData(int id) {
+                        return "data";
+                    }
+
+                    public static IService instance() {
+                        return INSTANCE;
+                    }
+                }
+                """
+            ),
+            java(
+                """
+                package com.example;
+
+                class ServiceConsumer {
+                    public void doThing() {
+                        Service.action();
+                    }
+                }
+                """,
+                """
+                package com.example;
+
+                class ServiceConsumer {
+                    private final IService service;
+
+                    public ServiceConsumer(IService service) {
+                        this.service = service;
+                    }
+
+                    public ServiceConsumer() {
+                        this(Service.instance());
+                    }
+
                     public void doThing() {
                         service.action();
                     }

@@ -8,11 +8,15 @@ import org.openrewrite.Cursor;
 import org.openrewrite.ExecutionContext;
 import org.openrewrite.Option;
 import org.openrewrite.Recipe;
+import org.openrewrite.RecipeRun;
+import org.openrewrite.Result;
+import org.openrewrite.SourceFile;
 import org.openrewrite.Tree;
 import org.openrewrite.TreeVisitor;
 import org.openrewrite.internal.ListUtils;
 import org.openrewrite.internal.lang.Nullable;
 import org.openrewrite.java.JavaIsoVisitor;
+import org.openrewrite.java.JavaParser;
 import org.openrewrite.java.JavaTemplate;
 import org.openrewrite.java.format.AutoFormat;
 import org.openrewrite.java.tree.*;
@@ -61,18 +65,26 @@ public class StaticServiceToSingleton extends Recipe {
     @Nullable
     Boolean addStaticDelegateMethods;
 
+    @Option(displayName = "Extract service interface",
+            description = "Should create an interface for a Service and use that instead of actual Service type.",
+            required = false)
+    @Nullable
+    Boolean extractServiceInterface;
+
     @JsonCreator
     public StaticServiceToSingleton(
             @JsonProperty("serviceClassName") String serviceClassName,
             @JsonProperty("annotateMethods") @Nullable String annotateMethods,
             @JsonProperty("annotateConstructors") @Nullable String annotateConstructors,
             @JsonProperty("addDefaultConstructorToConsumers") @Nullable Boolean addDefaultConstructorToConsumers,
-            @JsonProperty("addStaticDelegateMethods") @Nullable Boolean addStaticDelegateMethods) {
+            @JsonProperty("addStaticDelegateMethods") @Nullable Boolean addStaticDelegateMethods,
+            @JsonProperty("extractServiceInterface") @Nullable Boolean extractServiceInterface) {
         this.serviceClassName = serviceClassName;
         this.annotateMethods = annotateMethods;
         this.annotateConstructors = annotateConstructors;
         this.addDefaultConstructorToConsumers = addDefaultConstructorToConsumers;
         this.addStaticDelegateMethods = addStaticDelegateMethods;
+        this.extractServiceInterface = extractServiceInterface;
     }
 
     @Override
@@ -88,6 +100,32 @@ public class StaticServiceToSingleton extends Recipe {
     @Override
     public TreeVisitor<?, ExecutionContext> getVisitor() {
         return new JavaIsoVisitor<ExecutionContext>() {
+            private final AtomicBoolean interfaceCreated = new AtomicBoolean(false);
+
+            @Override
+            public J.CompilationUnit visitCompilationUnit(J.CompilationUnit cu, ExecutionContext ctx) {
+                J.CompilationUnit result = super.visitCompilationUnit(cu, ctx);
+
+                // If extractServiceInterface is enabled and we're in the service's compilation unit, add interface to same file
+                if (Boolean.TRUE.equals(extractServiceInterface) && !interfaceCreated.get()) {
+                    boolean hasServiceClass = result.getClasses().stream()
+                            .anyMatch(c -> TypeUtils.isOfClassType(c.getType(), serviceClassName));
+
+                    if (hasServiceClass) {
+                        interfaceCreated.set(true);
+                        // Use doAfterVisit to add the interface after all other transformations
+                        doAfterVisit(new JavaIsoVisitor<ExecutionContext>() {
+                            @Override
+                            public J.CompilationUnit visitCompilationUnit(J.CompilationUnit cu, ExecutionContext ctx) {
+                                return createServiceInterfaceInSameFile(cu, ctx);
+                            }
+                        });
+                    }
+                }
+
+                return result;
+            }
+
             @Override
             public J.ClassDeclaration visitClassDeclaration(J.ClassDeclaration classDecl, ExecutionContext ctx) {
                 if (TypeUtils.isOfClassType(classDecl.getType(), serviceClassName)) {
@@ -97,9 +135,74 @@ public class StaticServiceToSingleton extends Recipe {
                 }
             }
 
+            private J.CompilationUnit createServiceInterfaceInSameFile(J.CompilationUnit cu, ExecutionContext ctx) {
+                // Find the Service class
+                J.ClassDeclaration serviceClass = cu.getClasses().stream()
+                        .filter(c -> TypeUtils.isOfClassType(c.getType(), serviceClassName))
+                        .findFirst()
+                        .orElse(null);
+
+                if (serviceClass == null) return cu;
+
+                String simpleName = serviceClass.getSimpleName();
+                String interfaceName = "I" + simpleName;
+
+                // Check if interface already exists (to avoid duplication)
+                boolean interfaceExists = cu.getClasses().stream()
+                        .anyMatch(c -> c.getSimpleName().equals(interfaceName));
+                if (interfaceExists) return cu;
+
+                // Collect all public non-static methods that will be in the interface
+                // Note: At this point, static modifiers have been removed, so we look for public methods
+                List<String> methodSignatures = new ArrayList<>();
+                for (Statement s : serviceClass.getBody().getStatements()) {
+                    if (s instanceof J.MethodDeclaration) {
+                        J.MethodDeclaration md = (J.MethodDeclaration) s;
+                        // After transformation, methods are no longer static, so we just check for public non-instance methods
+                        if (md.hasModifier(J.Modifier.Type.Public) && !md.hasModifier(J.Modifier.Type.Static) && !md.getSimpleName().equals("instance")) {
+                            // Build method signature
+                            String returnType = md.getReturnTypeExpression() != null ?
+                                    md.getReturnTypeExpression().printTrimmed(new Cursor(null, cu)) : "void";
+                            String params = md.getParameters().stream()
+                                    .filter(p -> !(p instanceof J.Empty))
+                                    .map(p -> p.printTrimmed(new Cursor(null, cu)))
+                                    .collect(Collectors.joining(", "));
+                            methodSignatures.add(returnType + " " + md.getSimpleName() + "(" + params + ");");
+                        }
+                    }
+                }
+
+                if (methodSignatures.isEmpty()) return cu;
+
+                // Create the interface source code
+                String packageDecl = cu.getPackageDeclaration() != null ?
+                        "package " + cu.getPackageDeclaration().getExpression().printTrimmed(new Cursor(null, cu)) + ";\n\n" : "";
+                String interfaceBody = String.join("\n    ", methodSignatures);
+                String interfaceSource = packageDecl + "interface " + interfaceName + " {\n    " + interfaceBody + "\n}\n";
+
+                // Parse the interface source to get a proper ClassDeclaration
+                JavaParser parser = JavaParser.fromJavaVersion().build();
+                J.CompilationUnit interfaceCu = parser.parse(ctx, interfaceSource).findFirst()
+                        .map(J.CompilationUnit.class::cast)
+                        .orElse(null);
+
+                if (interfaceCu == null || interfaceCu.getClasses().isEmpty()) return cu;
+
+                // Extract the interface declaration
+                J.ClassDeclaration interfaceDecl = interfaceCu.getClasses().get(0);
+
+                // Add the interface to the beginning of the classes list
+                List<J.ClassDeclaration> newClasses = new ArrayList<>();
+                newClasses.add(interfaceDecl);
+                newClasses.addAll(cu.getClasses());
+
+                return cu.withClasses(newClasses);
+            }
+
             private J.ClassDeclaration refactorServiceClass(J.ClassDeclaration cd, ExecutionContext ctx) {
                 String simpleName = cd.getSimpleName();
-                
+                String interfaceName = "I" + simpleName;
+
                 boolean hasInstanceField = cd.getBody().getStatements().stream()
                         .filter(s -> s instanceof J.VariableDeclarations)
                         .map(s -> (J.VariableDeclarations) s)
@@ -154,13 +257,22 @@ public class StaticServiceToSingleton extends Recipe {
                 }
 
                 // 3. Add instance() method
+                String returnType = Boolean.TRUE.equals(extractServiceInterface) ? interfaceName : simpleName;
                 String annotation = annotateMethods != null ? "@" + annotateMethods.substring(annotateMethods.lastIndexOf('.') + 1) + "\n" : "";
-                J.ClassDeclaration cdWithInstanceMethod = JavaTemplate.builder(annotation + "public static " + simpleName + " instance() {\n    return INSTANCE;\n}")
+                J.ClassDeclaration cdWithInstanceMethod = JavaTemplate.builder(annotation + "public static " + returnType + " instance() {\n    return INSTANCE;\n}")
                         .contextSensitive().build().apply(getCursor(), cd.getBody().getCoordinates().lastStatement());
                 statements.add(cdWithInstanceMethod.getBody().getStatements().get(cdWithInstanceMethod.getBody().getStatements().size() - 1));
                 if (annotateMethods != null) maybeAddImport(annotateMethods);
 
                 cd = cd.withBody(cd.getBody().withStatements(statements));
+
+                // 4. Add implements clause if extractServiceInterface is true
+                if (Boolean.TRUE.equals(extractServiceInterface)) {
+                    J.ClassDeclaration cdWithInterface = JavaTemplate.builder("class " + simpleName + " implements " + interfaceName + " {}")
+                            .contextSensitive().build().apply(getCursor(), cd.getCoordinates().replace());
+                    cd = cd.withImplements(cdWithInterface.getImplements());
+                }
+
                 return (J.ClassDeclaration) new AutoFormat().getVisitor().visit(cd, ctx, getCursor());
             }
 
@@ -178,6 +290,7 @@ public class StaticServiceToSingleton extends Recipe {
                 if (!foundUsage.get()) return cd;
 
                 String serviceSimpleName = serviceClassName.substring(serviceClassName.lastIndexOf('.') + 1);
+                String serviceTypeName = Boolean.TRUE.equals(extractServiceInterface) ? "I" + serviceSimpleName : serviceSimpleName;
                 String fieldName = Character.toLowerCase(serviceSimpleName.charAt(0)) + serviceSimpleName.substring(1);
 
                 // pass 1: update method calls
@@ -194,7 +307,7 @@ public class StaticServiceToSingleton extends Recipe {
                 // pass 2: add field
                 boolean fieldExists = cd.getBody().getStatements().stream().anyMatch(s -> s instanceof J.VariableDeclarations && ((J.VariableDeclarations) s).getVariables().stream().anyMatch(v -> v.getSimpleName().equals(fieldName)));
                 if (!fieldExists) {
-                    J.ClassDeclaration tempCd = JavaTemplate.builder("private final " + serviceSimpleName + " " + fieldName + ";")
+                    J.ClassDeclaration tempCd = JavaTemplate.builder("private final " + serviceTypeName + " " + fieldName + ";")
                             .imports(serviceClassName).contextSensitive().build().apply(new Cursor(getCursor(), cd), cd.getBody().getCoordinates().firstStatement());
                     cd = cd.withBody(cd.getBody().withStatements(ListUtils.concat(tempCd.getBody().getStatements().get(0), cd.getBody().getStatements())));
                     maybeAddImport(serviceClassName);
@@ -204,7 +317,7 @@ public class StaticServiceToSingleton extends Recipe {
                 boolean hasConstructors = cd.getBody().getStatements().stream().anyMatch(s -> s instanceof J.MethodDeclaration && ((J.MethodDeclaration) s).isConstructor());
                 if (!hasConstructors) {
                     String annotation = annotateConstructors != null ? "@" + annotateConstructors.substring(annotateConstructors.lastIndexOf('.') + 1) + "\n" : "";
-                    String template = annotation + "public " + cd.getSimpleName() + "(" + serviceSimpleName + " " + fieldName + ") {\n    this." + fieldName + " = " + fieldName + ";\n}";
+                    String template = annotation + "public " + cd.getSimpleName() + "(" + serviceTypeName + " " + fieldName + ") {\n    this." + fieldName + " = " + fieldName + ";\n}";
                     if (Boolean.TRUE.equals(addDefaultConstructorToConsumers)) {
                         template += "\npublic " + cd.getSimpleName() + "() {\n    this(" + serviceSimpleName + ".instance());\n}";
                     }
@@ -231,7 +344,7 @@ public class StaticServiceToSingleton extends Recipe {
                     if (annotateConstructors != null) maybeAddImport(annotateConstructors);
                 } else {
                     // Create helper statements
-                    J.ClassDeclaration helperCd = JavaTemplate.builder("public void helper(" + serviceSimpleName + " " + fieldName + ") { this." + fieldName + " = " + fieldName + "; }")
+                    J.ClassDeclaration helperCd = JavaTemplate.builder("public void helper(" + serviceTypeName + " " + fieldName + ") { this." + fieldName + " = " + fieldName + "; }")
                             .imports(serviceClassName).contextSensitive().build().apply(new Cursor(getCursor(), cd), cd.getBody().getCoordinates().firstStatement());
                     J.MethodDeclaration helperM = (J.MethodDeclaration) helperCd.getBody().getStatements().get(0);
                     Statement serviceParam = helperM.getParameters().get(0);

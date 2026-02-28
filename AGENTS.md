@@ -80,6 +80,44 @@ class ServiceConsumer {
 3.  If no constructors exist, a new one is created that accepts the service and a default constructor is added that initializes the service using `Service.instance()`.
 5.  All static method calls are updated to use the new service field.
 
+### With extractServiceInterface Parameter
+
+When `extractServiceInterface=true`, the refactoring also creates an interface:
+
+```java
+interface IService {
+    Result action(Input input);
+}
+
+class Service implements IService {
+    private static final Service INSTANCE = new Service();
+
+    public static IService instance() {
+        return INSTANCE;
+    }
+
+    public Result action(Input input) { ... }
+}
+
+class ServiceConsumer {
+    private final IService service;
+
+    public ServiceConsumer(IService service) {
+        this.service = service;
+    }
+
+    public ServiceConsumer() {
+        this(Service.instance());
+    }
+
+    public void doThing() {
+        service.action(new Input());
+    }
+}
+```
+
+Note: The interface type is used instead of the concrete Service type in consumer classes and the `instance()` method return type.
+
 ## Recipe Parameters
 
 | Parameter                        | Description                                                                                                         |
@@ -89,3 +127,5 @@ class ServiceConsumer {
 | annotateConstructors             | The fully qualified name of the annotation to be added to new constructors. If not defined, no annotation is added. |
 | addDefaultConstructorToConsumers | Whether a default constructor should be added to consumer classes.                                                  |
 | addStaticDelegateMethods         | If set to `true`, creates deprecated static methods that delegate invocations to the singleton instance.            |
+| extractServiceInterface          | When set to `true`, creates an interface (IService) with all public methods from the Service class. The Service class will implement this interface, and the `instance()` method will return the interface type. **Note:** The interface is currently added to the same file as the Service class (not a separate file). |
+
