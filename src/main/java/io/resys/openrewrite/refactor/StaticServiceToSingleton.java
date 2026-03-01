@@ -328,7 +328,7 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
                                 }
                                 parentCursor = parentCursor.getParent();
                             }
-                            return method.withSelect(new J.Identifier(Tree.randomId(), Space.EMPTY, Markers.EMPTY, List.of(), fieldName, method.getMethodType().getDeclaringType(), null));
+                            return method.withSelect(new J.Identifier(Tree.randomId(), Space.EMPTY, Markers.EMPTY, Collections.emptyList(), fieldName, method.getMethodType().getDeclaringType(), null));
                         }
                         return super.visitMethodInvocation(method, ctx);
                     }
@@ -412,7 +412,7 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
                                     public J.MethodInvocation visitMethodInvocation(J.MethodInvocation method, ExecutionContext ctx) {
                                         if (method.getSimpleName().equals("this")) {
                                             J.Identifier serviceArg = new J.Identifier(
-                                                    Tree.randomId(), Space.EMPTY, Markers.EMPTY, List.of(),
+                                                    Tree.randomId(), Space.EMPTY, Markers.EMPTY, Collections.emptyList(),
                                                     fieldName, null, null);
                                             return method.withArguments(ListUtils.<Expression>concat(method.getArguments(), serviceArg));
                                         }

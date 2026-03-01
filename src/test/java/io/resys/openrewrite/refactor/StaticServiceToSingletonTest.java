@@ -21,27 +21,23 @@ class StaticServiceToSingletonTest implements RewriteTest {
         rewriteRun(
           spec -> spec.expectedCyclesThatMakeChanges(1),
             java(
-                """
-                package com.example;
-                
-                class Service {
-                    public static void action() { }
-                }
-                """,
-                """
-                package com.example;
-                
-                class Service {
-                    private static final Service INSTANCE = new Service();
-                
-                    public void action() {
-                    }
-                
-                    public static Service instance() {
-                        return INSTANCE;
-                    }
-                }
-                """
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    public static void action() { }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    private static final Service INSTANCE = new Service();\n" +
+                "\n" +
+                "    public void action() {\n" +
+                "    }\n" +
+                "\n" +
+                "    public static Service instance() {\n" +
+                "        return INSTANCE;\n" +
+                "    }\n" +
+                "}"
             )
         );
     }
@@ -50,57 +46,49 @@ class StaticServiceToSingletonTest implements RewriteTest {
     void refactorConsumerClass() {
         rewriteRun(
             java(
-                """
-                package com.example;
-                
-                class Service {
-                    public static void action() { }
-                }
-                """,
-                """
-                package com.example;
-                
-                class Service {
-                    private static final Service INSTANCE = new Service();
-                
-                    public void action() {
-                    }
-                
-                    public static Service instance() {
-                        return INSTANCE;
-                    }
-                }
-                """
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    public static void action() { }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    private static final Service INSTANCE = new Service();\n" +
+                "\n" +
+                "    public void action() {\n" +
+                "    }\n" +
+                "\n" +
+                "    public static Service instance() {\n" +
+                "        return INSTANCE;\n" +
+                "    }\n" +
+                "}"
             ),
             java(
-                """
-                package com.example;
-                
-                class ServiceConsumer {
-                    public void doThing() {
-                        Service.action();
-                    }
-                }
-                """,
-                """
-                package com.example;
-                
-                class ServiceConsumer {
-                    private final Service service;
-                
-                    public ServiceConsumer(Service service) {
-                        this.service = service;
-                    }
-                
-                    public ServiceConsumer() {
-                        this(Service.instance());
-                    }
-                
-                    public void doThing() {
-                        service.action();
-                    }
-                }
-                """
+                "package com.example;\n" +
+                "\n" +
+                "class ServiceConsumer {\n" +
+                "    public void doThing() {\n" +
+                "        Service.action();\n" +
+                "    }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class ServiceConsumer {\n" +
+                "    private final Service service;\n" +
+                "\n" +
+                "    public ServiceConsumer(Service service) {\n" +
+                "        this.service = service;\n" +
+                "    }\n" +
+                "\n" +
+                "    public ServiceConsumer() {\n" +
+                "        this(Service.instance());\n" +
+                "    }\n" +
+                "\n" +
+                "    public void doThing() {\n" +
+                "        service.action();\n" +
+                "    }\n" +
+                "}"
             )
         );
     }
@@ -110,59 +98,51 @@ class StaticServiceToSingletonTest implements RewriteTest {
         rewriteRun(
             spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", "javax.inject.Singleton", "javax.inject.Inject", true, false, false)),
             java(
-                """
-                package com.example;
-                
-                class Service {
-                    public static void action() { }
-                }
-                """,
-                """
-                package com.example;
-                
-                class Service {
-                    private static final Service INSTANCE = new Service();
-                
-                    public void action() {
-                    }
-                
-                    @Singleton
-                    public static Service instance() {
-                        return INSTANCE;
-                    }
-                }
-                """
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    public static void action() { }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    private static final Service INSTANCE = new Service();\n" +
+                "\n" +
+                "    public void action() {\n" +
+                "    }\n" +
+                "\n" +
+                "    @Singleton\n" +
+                "    public static Service instance() {\n" +
+                "        return INSTANCE;\n" +
+                "    }\n" +
+                "}"
             ),
             java(
-                """
-                package com.example;
-                
-                class ServiceConsumer {
-                    public void doThing() {
-                        Service.action();
-                    }
-                }
-                """,
-                """
-                package com.example;
-                
-                class ServiceConsumer {
-                    private final Service service;
-                
-                    @Inject
-                    public ServiceConsumer(Service service) {
-                        this.service = service;
-                    }
-                
-                    public ServiceConsumer() {
-                        this(Service.instance());
-                    }
-                
-                    public void doThing() {
-                        service.action();
-                    }
-                }
-                """
+                "package com.example;\n" +
+                "\n" +
+                "class ServiceConsumer {\n" +
+                "    public void doThing() {\n" +
+                "        Service.action();\n" +
+                "    }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class ServiceConsumer {\n" +
+                "    private final Service service;\n" +
+                "\n" +
+                "    @Inject\n" +
+                "    public ServiceConsumer(Service service) {\n" +
+                "        this.service = service;\n" +
+                "    }\n" +
+                "\n" +
+                "    public ServiceConsumer() {\n" +
+                "        this(Service.instance());\n" +
+                "    }\n" +
+                "\n" +
+                "    public void doThing() {\n" +
+                "        service.action();\n" +
+                "    }\n" +
+                "}"
             )
         );
     }
@@ -173,42 +153,38 @@ class StaticServiceToSingletonTest implements RewriteTest {
             spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, true, false))
               .expectedCyclesThatMakeChanges(1),
             java(
-                """
-                package com.example;
-                
-                class Service {
-                    public static void action() { }
-                    public static String getSomething(int id) { return "val"; }
-                }
-                """,
-                """
-                package com.example;
-                
-                class Service {
-                    private static final Service INSTANCE = new Service();
-                
-                    @Deprecated
-                    public static void action() {
-                        instance().action();
-                    }
-                
-                    public void action() {
-                    }
-                
-                    @Deprecated
-                    public static String getSomething(int id) {
-                        return instance().getSomething(id);
-                    }
-                
-                    public String getSomething(int id) {
-                        return "val";
-                    }
-                
-                    public static Service instance() {
-                        return INSTANCE;
-                    }
-                }
-                """
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    public static void action() { }\n" +
+                "    public static String getSomething(int id) { return \"val\"; }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    private static final Service INSTANCE = new Service();\n" +
+                "\n" +
+                "    @Deprecated\n" +
+                "    public static void action() {\n" +
+                "        instance().action();\n" +
+                "    }\n" +
+                "\n" +
+                "    public void action() {\n" +
+                "    }\n" +
+                "\n" +
+                "    @Deprecated\n" +
+                "    public static String getSomething(int id) {\n" +
+                "        return instance().getSomething(id);\n" +
+                "    }\n" +
+                "\n" +
+                "    public String getSomething(int id) {\n" +
+                "        return \"val\";\n" +
+                "    }\n" +
+                "\n" +
+                "    public static Service instance() {\n" +
+                "        return INSTANCE;\n" +
+                "    }\n" +
+                "}"
             )
         );
     }
@@ -217,66 +193,58 @@ class StaticServiceToSingletonTest implements RewriteTest {
     void modifyExistingConstructor() {
         rewriteRun(
             java(
-                """
-                package com.example;
-                
-                class Service {
-                    public static void action() { }
-                }
-                """,
-                """
-                package com.example;
-                
-                class Service {
-                    private static final Service INSTANCE = new Service();
-                
-                    public void action() {
-                    }
-                
-                    public static Service instance() {
-                        return INSTANCE;
-                    }
-                }
-                """
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    public static void action() { }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    private static final Service INSTANCE = new Service();\n" +
+                "\n" +
+                "    public void action() {\n" +
+                "    }\n" +
+                "\n" +
+                "    public static Service instance() {\n" +
+                "        return INSTANCE;\n" +
+                "    }\n" +
+                "}"
             ),
             java(
-                """
-                package com.example;
-                
-                class ServiceConsumer {
-
-                    private String name;
-                    public ServiceConsumer(String name) {
-                        this.name = name;
-                    }
-                    public void doThing() {
-                        Service.action();
-                    }
-                }
-                """,
-                """
-                package com.example;
-                
-                class ServiceConsumer {
-                
-                    private final Service service;
-
-                    private String name;
-                
-                    public ServiceConsumer(String name, Service service) {
-                        this.name = name;
-                        this.service = service;
-                    }
-                
-                    public ServiceConsumer(String name) {
-                        this(name, Service.instance());
-                    }
-                
-                    public void doThing() {
-                        service.action();
-                    }
-                }
-                """
+                "package com.example;\n" +
+                "\n" +
+                "class ServiceConsumer {\n" +
+                "\n" +
+                "    private String name;\n" +
+                "    public ServiceConsumer(String name) {\n" +
+                "        this.name = name;\n" +
+                "    }\n" +
+                "    public void doThing() {\n" +
+                "        Service.action();\n" +
+                "    }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class ServiceConsumer {\n" +
+                "\n" +
+                "    private final Service service;\n" +
+                "\n" +
+                "    private String name;\n" +
+                "\n" +
+                "    public ServiceConsumer(String name, Service service) {\n" +
+                "        this.name = name;\n" +
+                "        this.service = service;\n" +
+                "    }\n" +
+                "\n" +
+                "    public ServiceConsumer(String name) {\n" +
+                "        this(name, Service.instance());\n" +
+                "    }\n" +
+                "\n" +
+                "    public void doThing() {\n" +
+                "        service.action();\n" +
+                "    }\n" +
+                "}"
             )
         );
     }
@@ -285,74 +253,66 @@ class StaticServiceToSingletonTest implements RewriteTest {
     void modifyExistingConstructorWithDelegation() {
         rewriteRun(
             java(
-                """
-                package com.example;
-                
-                class Service {
-                    public static void action() { }
-                }
-                """,
-                """
-                package com.example;
-                
-                class Service {
-                    private static final Service INSTANCE = new Service();
-                
-                    public void action() {
-                    }
-                
-                    public static Service instance() {
-                        return INSTANCE;
-                    }
-                }
-                """
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    public static void action() { }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    private static final Service INSTANCE = new Service();\n" +
+                "\n" +
+                "    public void action() {\n" +
+                "    }\n" +
+                "\n" +
+                "    public static Service instance() {\n" +
+                "        return INSTANCE;\n" +
+                "    }\n" +
+                "}"
             ),
             java(
-                """
-                package com.example;
-                
-                class ServiceConsumer {
-                    private String name;
-                    public ServiceConsumer() {
-                        this("default");
-                    }
-                    public ServiceConsumer(String name) {
-                        this.name = name;
-                    }
-                    public void doThing() {
-                        Service.action();
-                    }
-                }
-                """,
-                """
-                package com.example;
-                
-                class ServiceConsumer {
-                    private final Service service;
-                    private String name;
-                
-                    public ServiceConsumer(Service service) {
-                        this("default", service);
-                    }
-                
-                    public ServiceConsumer() {
-                        this(Service.instance());
-                    }
-                
-                    public ServiceConsumer(String name, Service service) {
-                        this.name = name;
-                        this.service = service;
-                    }
-                
-                    public ServiceConsumer(String name) {
-                        this(name, Service.instance());
-                    }
-                
-                    public void doThing() {
-                        service.action();
-                    }
-                }
-                """
+                "package com.example;\n" +
+                "\n" +
+                "class ServiceConsumer {\n" +
+                "    private String name;\n" +
+                "    public ServiceConsumer() {\n" +
+                "        this(\"default\");\n" +
+                "    }\n" +
+                "    public ServiceConsumer(String name) {\n" +
+                "        this.name = name;\n" +
+                "    }\n" +
+                "    public void doThing() {\n" +
+                "        Service.action();\n" +
+                "    }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class ServiceConsumer {\n" +
+                "    private final Service service;\n" +
+                "    private String name;\n" +
+                "\n" +
+                "    public ServiceConsumer(Service service) {\n" +
+                "        this(\"default\", service);\n" +
+                "    }\n" +
+                "\n" +
+                "    public ServiceConsumer() {\n" +
+                "        this(Service.instance());\n" +
+                "    }\n" +
+                "\n" +
+                "    public ServiceConsumer(String name, Service service) {\n" +
+                "        this.name = name;\n" +
+                "        this.service = service;\n" +
+                "    }\n" +
+                "\n" +
+                "    public ServiceConsumer(String name) {\n" +
+                "        this(name, Service.instance());\n" +
+                "    }\n" +
+                "\n" +
+                "    public void doThing() {\n" +
+                "        service.action();\n" +
+                "    }\n" +
+                "}"
             )
         );
     }
@@ -362,74 +322,64 @@ class StaticServiceToSingletonTest implements RewriteTest {
         rewriteRun(
             spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, false, true)),
             java(
-                """
-                package com.example;
-
-                class Service {
-                    public static void action() { }
-                    public static String getData(int id) { return "data"; }
-                }
-                """,
-                """
-                package com.example;
-
-                class Service implements IService {
-                    private static final Service INSTANCE = new Service();
-
-                    public void action() {
-                    }
-
-                    public String getData(int id) {
-                        return "data";
-                    }
-
-                    public static IService instance() {
-                        return INSTANCE;
-                    }
-                }
-                """
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    public static void action() { }\n" +
+                "    public static String getData(int id) { return \"data\"; }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class Service implements IService {\n" +
+                "    private static final Service INSTANCE = new Service();\n" +
+                "\n" +
+                "    public void action() {\n" +
+                "    }\n" +
+                "\n" +
+                "    public String getData(int id) {\n" +
+                "        return \"data\";\n" +
+                "    }\n" +
+                "\n" +
+                "    public static IService instance() {\n" +
+                "        return INSTANCE;\n" +
+                "    }\n" +
+                "}"
             ),
             java(
                 null,
-                """
-                package com.example;
-
-                public interface IService {
-                    void action();
-                    String getData(int id);
-                }
-                """,
+                "package com.example;\n" +
+                "\n" +
+                "public interface IService {\n" +
+                "    void action();\n" +
+                "    String getData(int id);\n" +
+                "}",
                 spec -> spec.path("com/example/IService.java")
             ),
             java(
-                """
-                package com.example;
-
-                class ServiceConsumer {
-                    public void doThing() {
-                        Service.action();
-                    }
-                }
-                """,
-                """
-                package com.example;
-
-                class ServiceConsumer {
-                    private final IService service;
-
-                    public ServiceConsumer(IService service) {
-                        this.service = service;
-                    }
-
-                    public ServiceConsumer() {
-                        this(Service.instance());
-                    }
-
-                    public void doThing() {
-                        service.action();
-                    }
-                }
-                """
+                "package com.example;\n" +
+                "\n" +
+                "class ServiceConsumer {\n" +
+                "    public void doThing() {\n" +
+                "        Service.action();\n" +
+                "    }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class ServiceConsumer {\n" +
+                "    private final IService service;\n" +
+                "\n" +
+                "    public ServiceConsumer(IService service) {\n" +
+                "        this.service = service;\n" +
+                "    }\n" +
+                "\n" +
+                "    public ServiceConsumer() {\n" +
+                "        this(Service.instance());\n" +
+                "    }\n" +
+                "\n" +
+                "    public void doThing() {\n" +
+                "        service.action();\n" +
+                "    }\n" +
+                "}"
             )
         );
     }
@@ -438,65 +388,57 @@ class StaticServiceToSingletonTest implements RewriteTest {
     void doNotTransformStaticMethodCalls() {
         rewriteRun(
             java(
-                """
-                package com.example;
-
-                class Service {
-                    public static void action() { }
-                }
-                """,
-                """
-                package com.example;
-
-                class Service {
-                    private static final Service INSTANCE = new Service();
-
-                    public void action() {
-                    }
-
-                    public static Service instance() {
-                        return INSTANCE;
-                    }
-                }
-                """
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    public static void action() { }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    private static final Service INSTANCE = new Service();\n" +
+                "\n" +
+                "    public void action() {\n" +
+                "    }\n" +
+                "\n" +
+                "    public static Service instance() {\n" +
+                "        return INSTANCE;\n" +
+                "    }\n" +
+                "}"
             ),
             java(
-                """
-                package com.example;
-
-                class ServiceConsumer {
-                    public void nonStaticMethod() {
-                        Service.action();
-                    }
-
-                    public static void staticMethod() {
-                        Service.action();
-                    }
-                }
-                """,
-                """
-                package com.example;
-
-                class ServiceConsumer {
-                    private final Service service;
-
-                    public ServiceConsumer(Service service) {
-                        this.service = service;
-                    }
-
-                    public ServiceConsumer() {
-                        this(Service.instance());
-                    }
-
-                    public void nonStaticMethod() {
-                        service.action();
-                    }
-
-                    public static void staticMethod() {
-                        Service.action();
-                    }
-                }
-                """
+                "package com.example;\n" +
+                "\n" +
+                "class ServiceConsumer {\n" +
+                "    public void nonStaticMethod() {\n" +
+                "        Service.action();\n" +
+                "    }\n" +
+                "\n" +
+                "    public static void staticMethod() {\n" +
+                "        Service.action();\n" +
+                "    }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class ServiceConsumer {\n" +
+                "    private final Service service;\n" +
+                "\n" +
+                "    public ServiceConsumer(Service service) {\n" +
+                "        this.service = service;\n" +
+                "    }\n" +
+                "\n" +
+                "    public ServiceConsumer() {\n" +
+                "        this(Service.instance());\n" +
+                "    }\n" +
+                "\n" +
+                "    public void nonStaticMethod() {\n" +
+                "        service.action();\n" +
+                "    }\n" +
+                "\n" +
+                "    public static void staticMethod() {\n" +
+                "        Service.action();\n" +
+                "    }\n" +
+                "}"
             )
         );
     }
@@ -505,57 +447,49 @@ class StaticServiceToSingletonTest implements RewriteTest {
     void transformLambdaInNonStaticMethod() {
         rewriteRun(
             java(
-                """
-                package com.example;
-
-                class Service {
-                    public static void action() { }
-                }
-                """,
-                """
-                package com.example;
-
-                class Service {
-                    private static final Service INSTANCE = new Service();
-
-                    public void action() {
-                    }
-
-                    public static Service instance() {
-                        return INSTANCE;
-                    }
-                }
-                """
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    public static void action() { }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    private static final Service INSTANCE = new Service();\n" +
+                "\n" +
+                "    public void action() {\n" +
+                "    }\n" +
+                "\n" +
+                "    public static Service instance() {\n" +
+                "        return INSTANCE;\n" +
+                "    }\n" +
+                "}"
             ),
             java(
-                """
-                package com.example;
-
-                class ServiceConsumer {
-                    public void nonStaticMethod() {
-                        Runnable r = () -> Service.action();
-                    }
-                }
-                """,
-                """
-                package com.example;
-
-                class ServiceConsumer {
-                    private final Service service;
-
-                    public ServiceConsumer(Service service) {
-                        this.service = service;
-                    }
-
-                    public ServiceConsumer() {
-                        this(Service.instance());
-                    }
-
-                    public void nonStaticMethod() {
-                        Runnable r = () -> service.action();
-                    }
-                }
-                """
+                "package com.example;\n" +
+                "\n" +
+                "class ServiceConsumer {\n" +
+                "    public void nonStaticMethod() {\n" +
+                "        Runnable r = () -> Service.action();\n" +
+                "    }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class ServiceConsumer {\n" +
+                "    private final Service service;\n" +
+                "\n" +
+                "    public ServiceConsumer(Service service) {\n" +
+                "        this.service = service;\n" +
+                "    }\n" +
+                "\n" +
+                "    public ServiceConsumer() {\n" +
+                "        this(Service.instance());\n" +
+                "    }\n" +
+                "\n" +
+                "    public void nonStaticMethod() {\n" +
+                "        Runnable r = () -> service.action();\n" +
+                "    }\n" +
+                "}"
             )
         );
     }
@@ -565,38 +499,32 @@ class StaticServiceToSingletonTest implements RewriteTest {
         rewriteRun(
           spec -> spec.expectedCyclesThatMakeChanges(1),
             java(
-                """
-                package com.example;
-
-                class Service {
-                    public static void action() { }
-                }
-                """,
-                """
-                package com.example;
-
-                class Service {
-                    private static final Service INSTANCE = new Service();
-
-                    public void action() {
-                    }
-
-                    public static Service instance() {
-                        return INSTANCE;
-                    }
-                }
-                """
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    public static void action() { }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    private static final Service INSTANCE = new Service();\n" +
+                "\n" +
+                "    public void action() {\n" +
+                "    }\n" +
+                "\n" +
+                "    public static Service instance() {\n" +
+                "        return INSTANCE;\n" +
+                "    }\n" +
+                "}"
             ),
             java(
-                """
-                package com.example;
-
-                class ServiceConsumer {
-                    public static void staticMethod() {
-                        Runnable r = () -> Service.action();
-                    }
-                }
-                """
+                "package com.example;\n" +
+                "\n" +
+                "class ServiceConsumer {\n" +
+                "    public static void staticMethod() {\n" +
+                "        Runnable r = () -> Service.action();\n" +
+                "    }\n" +
+                "}"
             )
         );
     }
