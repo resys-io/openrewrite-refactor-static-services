@@ -274,28 +274,47 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
                 return (J.ClassDeclaration) new AutoFormat(null).getVisitor().visit(cd, ctx, getCursor());
             }
 
+            private boolean isServiceCall(J.MethodInvocation method, String serviceSimpleName) {
+                if (method.getSimpleName().equals("instance")) {
+                    return false;
+                }
+                // Normal case: type info available
+                if (method.getMethodType() != null) {
+                    return TypeUtils.isOfClassType(method.getMethodType().getDeclaringType(), serviceClassName);
+                }
+                // Fallback: service was already upgraded in a previous run, static method no longer exists,
+                // so type resolution fails. Match by select expression name instead.
+                Expression select = method.getSelect();
+                return select instanceof J.Identifier &&
+                       ((J.Identifier) select).getSimpleName().equals(serviceSimpleName);
+            }
+
+            private boolean isInStaticContext(Cursor cursor) {
+                while (cursor != null) {
+                    Object value = cursor.getValue();
+                    if (value instanceof J.MethodDeclaration) {
+                        return ((J.MethodDeclaration) value).hasModifier(J.Modifier.Type.Static);
+                    }
+                    if (value instanceof J.ClassDeclaration) {
+                        return false;
+                    }
+                    cursor = cursor.getParent();
+                }
+                return false;
+            }
+
             private J.ClassDeclaration refactorConsumerClass(J.ClassDeclaration cd, ExecutionContext ctx) {
+                String serviceSimpleName = serviceClassName.substring(serviceClassName.lastIndexOf('.') + 1);
+                String serviceTypeName = Boolean.TRUE.equals(extractServiceInterface) ? "I" + serviceSimpleName : serviceSimpleName;
+                String fieldName = Character.toLowerCase(serviceSimpleName.charAt(0)) + serviceSimpleName.substring(1);
+
                 // Check if there's usage from non-static context
                 AtomicBoolean foundUsageInNonStaticContext = new AtomicBoolean(false);
                 new JavaIsoVisitor<ExecutionContext>() {
                     @Override
                     public J.MethodInvocation visitMethodInvocation(J.MethodInvocation method, ExecutionContext ctx) {
-                        if (method.getMethodType() != null && TypeUtils.isOfClassType(method.getMethodType().getDeclaringType(), serviceClassName)) {
-                            Cursor parentCursor = getCursor();
-                            while (parentCursor != null) {
-                                Object value = parentCursor.getValue();
-                                if (value instanceof J.MethodDeclaration) {
-                                    J.MethodDeclaration containingMethod = (J.MethodDeclaration) value;
-                                    if (!containingMethod.hasModifier(J.Modifier.Type.Static)) {
-                                        foundUsageInNonStaticContext.set(true);
-                                    }
-                                    break;
-                                }
-                                if (value instanceof J.ClassDeclaration) {
-                                    break;
-                                }
-                                parentCursor = parentCursor.getParent();
-                            }
+                        if (isServiceCall(method, serviceSimpleName) && !isInStaticContext(getCursor())) {
+                            foundUsageInNonStaticContext.set(true);
                         }
                         return super.visitMethodInvocation(method, ctx);
                     }
@@ -304,31 +323,14 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
                 // Only refactor if there's usage from non-static context
                 if (!foundUsageInNonStaticContext.get()) return cd;
 
-                String serviceSimpleName = serviceClassName.substring(serviceClassName.lastIndexOf('.') + 1);
-                String serviceTypeName = Boolean.TRUE.equals(extractServiceInterface) ? "I" + serviceSimpleName : serviceSimpleName;
-                String fieldName = Character.toLowerCase(serviceSimpleName.charAt(0)) + serviceSimpleName.substring(1);
-
                 // pass 1: update method calls (only in non-static methods)
                 cd = (J.ClassDeclaration) new JavaIsoVisitor<ExecutionContext>() {
                     @Override
                     public J.MethodInvocation visitMethodInvocation(J.MethodInvocation method, ExecutionContext ctx) {
-                        if (method.getMethodType() != null && TypeUtils.isOfClassType(method.getMethodType().getDeclaringType(), serviceClassName) && !method.getSimpleName().equals("instance")) {
-                            Cursor parentCursor = getCursor();
-                            while (parentCursor != null) {
-                                Object value = parentCursor.getValue();
-                                if (value instanceof J.MethodDeclaration) {
-                                    J.MethodDeclaration containingMethod = (J.MethodDeclaration) value;
-                                    if (containingMethod.hasModifier(J.Modifier.Type.Static)) {
-                                        return super.visitMethodInvocation(method, ctx);
-                                    }
-                                    break;
-                                }
-                                if (value instanceof J.ClassDeclaration) {
-                                    return super.visitMethodInvocation(method, ctx);
-                                }
-                                parentCursor = parentCursor.getParent();
-                            }
-                            return method.withSelect(new J.Identifier(Tree.randomId(), Space.EMPTY, Markers.EMPTY, Collections.emptyList(), fieldName, method.getMethodType().getDeclaringType(), null));
+                        if (isServiceCall(method, serviceSimpleName) && !isInStaticContext(getCursor())) {
+                            JavaType selectType = method.getMethodType() != null
+                                    ? method.getMethodType().getDeclaringType() : null;
+                            return method.withSelect(new J.Identifier(Tree.randomId(), Space.EMPTY, Markers.EMPTY, Collections.emptyList(), fieldName, selectType, null));
                         }
                         return super.visitMethodInvocation(method, ctx);
                     }

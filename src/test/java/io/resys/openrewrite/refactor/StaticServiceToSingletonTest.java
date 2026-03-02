@@ -94,6 +94,41 @@ class StaticServiceToSingletonTest implements RewriteTest {
     }
 
     @Test
+    void refactorConsumerClass2() {
+        // Service has already been upgraded in a previous run - only the consumer needs updating
+        rewriteRun(
+          spec -> spec.expectedCyclesThatMakeChanges(1),
+          java(
+            "package com.example;\n" +
+              "\n" +
+              "class ServiceConsumer {\n" +
+              "    public void doThing() {\n" +
+              "        Service.action();\n" +
+              "    }\n" +
+              "}",
+            "package com.example;\n" +
+              "\n" +
+              "class ServiceConsumer {\n" +
+              "    private final Service service;\n" +
+              "\n" +
+              "    public ServiceConsumer(Service service) {\n" +
+              "        this.service = service;\n" +
+              "    }\n" +
+              "\n" +
+              "    public ServiceConsumer() {\n" +
+              "        this(Service.instance());\n" +
+              "    }\n" +
+              "\n" +
+              "    public void doThing() {\n" +
+              "        service.action();\n" +
+              "    }\n" +
+              "}"
+          )
+        );
+    }
+
+
+    @Test
     void refactorWithAnnotations() {
         rewriteRun(
             spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", "javax.inject.Singleton", "javax.inject.Inject", true, false, false)),
