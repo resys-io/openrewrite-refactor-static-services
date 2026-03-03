@@ -278,9 +278,10 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
                 if (method.getSimpleName().equals("instance")) {
                     return false;
                 }
-                // Normal case: type info available
+                // Normal case: type info available - only match static calls
                 if (method.getMethodType() != null) {
-                    return TypeUtils.isOfClassType(method.getMethodType().getDeclaringType(), serviceClassName);
+                    return TypeUtils.isOfClassType(method.getMethodType().getDeclaringType(), serviceClassName)
+                            && method.getMethodType().hasFlags(Flag.Static);
                 }
                 // Fallback: service was already upgraded in a previous run, static method no longer exists,
                 // so type resolution fails. Match by select expression name instead.

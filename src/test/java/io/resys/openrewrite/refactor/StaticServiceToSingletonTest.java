@@ -94,7 +94,7 @@ class StaticServiceToSingletonTest implements RewriteTest {
     }
 
     @Test
-    void refactorConsumerClass2() {
+    void refactorConsumerClassWhenServiceAlreadyUpgraded() {
         // Service has already been upgraded in a previous run - only the consumer needs updating
         rewriteRun(
           spec -> spec.expectedCyclesThatMakeChanges(1),
@@ -124,6 +124,22 @@ class StaticServiceToSingletonTest implements RewriteTest {
               "    }\n" +
               "}"
           )
+        );
+    }
+
+    @Test
+    void doNotRefactorConsumerClassWhenCallingNonStaticServiceMethod() {
+        rewriteRun(
+          spec -> spec.expectedCyclesThatMakeChanges(0),
+          java(
+            "package com.example;\n" +
+              "\n" +
+              "class ServiceConsumer {\n" +
+              "    Service service;\n" +
+              "    public void doThing() {\n" +
+              "        service.action();\n" +
+              "    }\n" +
+              "}")
         );
     }
 
