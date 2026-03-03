@@ -49,11 +49,11 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
     @Nullable
     Boolean addDefaultConstructorToConsumers;
 
-    @Option(displayName = "Add static delegate methods",
-            description = "When set true, create deprecated static method that delegates invocation to matching singleton instance.",
+    @Option(displayName = "Change static calls through instance",
+            description = "When set true, static invocations from static contexts are rewritten as Service.instance().method() instead of being left unchanged.",
             required = false)
     @Nullable
-    Boolean addStaticDelegateMethods;
+    Boolean changeStaticCallsThroughInstance;
 
     @Option(displayName = "Extract service interface",
             description = "Should create an interface for a Service and use that instead of actual Service type.",
@@ -67,14 +67,14 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
             @JsonProperty("annotateMethods") @Nullable String annotateMethods,
             @JsonProperty("annotateConstructors") @Nullable String annotateConstructors,
             @JsonProperty("addDefaultConstructorToConsumers") @Nullable Boolean addDefaultConstructorToConsumers,
-            @JsonProperty("addStaticDelegateMethods") @Nullable Boolean addStaticDelegateMethods,
+            @JsonProperty("changeStaticCallsThroughInstance") @Nullable Boolean changeStaticCallsThroughInstance,
             @JsonProperty("extractServiceInterface") @Nullable Boolean extractServiceInterface) {
         super();
         this.serviceClassName = serviceClassName;
         this.annotateMethods = annotateMethods;
         this.annotateConstructors = annotateConstructors;
         this.addDefaultConstructorToConsumers = addDefaultConstructorToConsumers;
-        this.addStaticDelegateMethods = addStaticDelegateMethods;
+        this.changeStaticCallsThroughInstance = changeStaticCallsThroughInstance;
         this.extractServiceInterface = extractServiceInterface;
     }
 
@@ -220,27 +220,6 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
                         J.MethodDeclaration md = (J.MethodDeclaration) s;
                         if (md.hasModifier(J.Modifier.Type.Public) && md.hasModifier(J.Modifier.Type.Static) && !md.getSimpleName().equals("instance")) {
 
-                            if (Boolean.TRUE.equals(addStaticDelegateMethods)) {
-                                String params = md.getParameters().stream()
-                                        .filter(p -> !(p instanceof J.Empty))
-                                        .map(p -> p.print(getCursor()).trim())
-                                        .collect(Collectors.joining(", "));
-                                String args = md.getParameters().stream()
-                                        .filter(p -> p instanceof J.VariableDeclarations)
-                                        .map(p -> ((J.VariableDeclarations) p).getVariables().get(0).getSimpleName())
-                                        .collect(Collectors.joining(", "));
-
-                                String returnType = md.getReturnTypeExpression() != null ? md.getReturnTypeExpression().print(getCursor()).trim() : "void";
-                                String prefix = returnType.equals("void") ? "" : "return ";
-
-                                String delegateTemplate = "@Deprecated\npublic static " + returnType + " " + md.getSimpleName() + "(" + params + ") {\n" +
-                                        "    " + prefix + "instance()." + md.getSimpleName() + "(" + args + ");\n}";
-
-                                J.ClassDeclaration cdWithDelegate = JavaTemplate.builder(delegateTemplate)
-                                        .contextSensitive().build().apply(getCursor(), cd.getBody().getCoordinates().firstStatement());
-                                statements.add(cdWithDelegate.getBody().getStatements().get(0));
-                            }
-
                             md = md.withModifiers(ListUtils.map(md.getModifiers(), m -> m.getType() == J.Modifier.Type.Static ? null : m));
                             if (md.getMethodType() != null) {
                                 Set<Flag> flags = new java.util.HashSet<>(md.getMethodType().getFlags());
@@ -321,21 +300,56 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
                     }
                 }.visit(cd, ctx, getCursor());
 
-                // Only refactor if there's usage from non-static context
-                if (!foundUsageInNonStaticContext.get()) return cd;
+                // Check if there's usage from static context (only relevant when changeStaticCallsThroughInstance is enabled)
+                AtomicBoolean foundUsageInStaticContext = new AtomicBoolean(false);
+                if (Boolean.TRUE.equals(changeStaticCallsThroughInstance)) {
+                    new JavaIsoVisitor<ExecutionContext>() {
+                        @Override
+                        public J.MethodInvocation visitMethodInvocation(J.MethodInvocation method, ExecutionContext ctx) {
+                            if (isServiceCall(method, serviceSimpleName) && isInStaticContext(getCursor())) {
+                                foundUsageInStaticContext.set(true);
+                            }
+                            return super.visitMethodInvocation(method, ctx);
+                        }
+                    }.visit(cd, ctx, getCursor());
+                }
 
-                // pass 1: update method calls (only in non-static methods)
+                // Only refactor if there's relevant usage
+                if (!foundUsageInNonStaticContext.get() && !foundUsageInStaticContext.get()) return cd;
+
+                // pass 1: update method calls
                 cd = (J.ClassDeclaration) new JavaIsoVisitor<ExecutionContext>() {
                     @Override
                     public J.MethodInvocation visitMethodInvocation(J.MethodInvocation method, ExecutionContext ctx) {
-                        if (isServiceCall(method, serviceSimpleName) && !isInStaticContext(getCursor())) {
-                            JavaType selectType = method.getMethodType() != null
-                                    ? method.getMethodType().getDeclaringType() : null;
-                            return method.withSelect(new J.Identifier(Tree.randomId(), Space.EMPTY, Markers.EMPTY, Collections.emptyList(), fieldName, selectType, null));
+                        if (isServiceCall(method, serviceSimpleName)) {
+                            boolean inStaticCtx = isInStaticContext(getCursor());
+                            if (!inStaticCtx && foundUsageInNonStaticContext.get()) {
+                                // Non-static context: replace with injected field
+                                JavaType selectType = method.getMethodType() != null
+                                        ? method.getMethodType().getDeclaringType() : null;
+                                return method.withSelect(new J.Identifier(Tree.randomId(), Space.EMPTY, Markers.EMPTY, Collections.emptyList(), fieldName, selectType, null));
+                            } else if (inStaticCtx && Boolean.TRUE.equals(changeStaticCallsThroughInstance)
+                                    && method.getSelect() instanceof J.Identifier) {
+                                // Static context: rewrite Service.action(args) as Service.instance().action(args)
+                                // Guard: only when select is a plain identifier so we don't double-transform across cycles
+                                J.MethodInvocation instanceCall = method
+                                        .withId(Tree.randomId())
+                                        .withPrefix(Space.EMPTY)
+                                        .withName(method.getName().withSimpleName("instance"))
+                                        .withArguments(Collections.singletonList(new J.Empty(Tree.randomId(), Space.EMPTY, Markers.EMPTY)))
+                                        .withMethodType(null);
+                                return method.withSelect(instanceCall);
+                            }
                         }
                         return super.visitMethodInvocation(method, ctx);
                     }
                 }.visit(cd, ctx, getCursor());
+
+                // If only static-context usage, no field/constructor changes needed
+                if (!foundUsageInNonStaticContext.get()) {
+                    doAfterVisit(new AutoFormat(null).getVisitor());
+                    return cd;
+                }
 
                 // pass 2: add field
                 boolean fieldExists = cd.getBody().getStatements().stream().anyMatch(s -> s instanceof J.VariableDeclarations && ((J.VariableDeclarations) s).getVariables().stream().anyMatch(v -> v.getSimpleName().equals(fieldName)));

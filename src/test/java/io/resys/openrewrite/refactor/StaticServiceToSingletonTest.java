@@ -11,7 +11,7 @@ class StaticServiceToSingletonTest implements RewriteTest {
 
     @Override
     public void defaults(RecipeSpec spec) {
-        spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, false, false))
+        spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, null, null))
           .expectedCyclesThatMakeChanges(2)
             .typeValidationOptions(TypeValidation.none());
     }
@@ -147,7 +147,7 @@ class StaticServiceToSingletonTest implements RewriteTest {
     @Test
     void refactorWithAnnotations() {
         rewriteRun(
-            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", "javax.inject.Singleton", "javax.inject.Inject", true, false, false)),
+            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", "javax.inject.Singleton", "javax.inject.Inject", true, null, null)),
             java(
                 "package com.example;\n" +
                 "\n" +
@@ -199,41 +199,59 @@ class StaticServiceToSingletonTest implements RewriteTest {
     }
 
     @Test
-    void refactorWithStaticDelegateMethods() {
+    void changeStaticCallsThroughInstance() {
         rewriteRun(
-            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, true, false))
-              .expectedCyclesThatMakeChanges(1),
+            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, true, null)),
             java(
                 "package com.example;\n" +
                 "\n" +
                 "class Service {\n" +
                 "    public static void action() { }\n" +
-                "    public static String getSomething(int id) { return \"val\"; }\n" +
                 "}",
                 "package com.example;\n" +
                 "\n" +
                 "class Service {\n" +
                 "    private static final Service INSTANCE = new Service();\n" +
                 "\n" +
-                "    @Deprecated\n" +
-                "    public static void action() {\n" +
-                "        instance().action();\n" +
-                "    }\n" +
-                "\n" +
                 "    public void action() {\n" +
-                "    }\n" +
-                "\n" +
-                "    @Deprecated\n" +
-                "    public static String getSomething(int id) {\n" +
-                "        return instance().getSomething(id);\n" +
-                "    }\n" +
-                "\n" +
-                "    public String getSomething(int id) {\n" +
-                "        return \"val\";\n" +
                 "    }\n" +
                 "\n" +
                 "    public static Service instance() {\n" +
                 "        return INSTANCE;\n" +
+                "    }\n" +
+                "}"
+            ),
+            java(
+                "package com.example;\n" +
+                "\n" +
+                "class ServiceConsumer {\n" +
+                "    public void nonStaticMethod() {\n" +
+                "        Service.action();\n" +
+                "    }\n" +
+                "\n" +
+                "    public static void staticMethod() {\n" +
+                "        Service.action();\n" +
+                "    }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class ServiceConsumer {\n" +
+                "    private final Service service;\n" +
+                "\n" +
+                "    public ServiceConsumer(Service service) {\n" +
+                "        this.service = service;\n" +
+                "    }\n" +
+                "\n" +
+                "    public ServiceConsumer() {\n" +
+                "        this(Service.instance());\n" +
+                "    }\n" +
+                "\n" +
+                "    public void nonStaticMethod() {\n" +
+                "        service.action();\n" +
+                "    }\n" +
+                "\n" +
+                "    public static void staticMethod() {\n" +
+                "        Service.instance().action();\n" +
                 "    }\n" +
                 "}"
             )
@@ -371,7 +389,7 @@ class StaticServiceToSingletonTest implements RewriteTest {
     @Test
     void extractServiceInterface() {
         rewriteRun(
-            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, false, true)),
+            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, null, true)),
             java(
                 "package com.example;\n" +
                 "\n" +

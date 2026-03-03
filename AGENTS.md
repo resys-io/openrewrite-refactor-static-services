@@ -134,6 +134,6 @@ Note: The interface type is used instead of the concrete Service type in consume
 | annotateMethods                  | The fully qualified name of the annotation to be added to new methods. If not defined, no annotation is added.      |
 | annotateConstructors             | The fully qualified name of the annotation to be added to new constructors. If not defined, no annotation is added. |
 | addDefaultConstructorToConsumers | Whether a default constructor should be added to consumer classes.                                                  |
-| addStaticDelegateMethods         | If set to `true`, creates deprecated static methods that delegate invocations to the singleton instance.            |
+| changeStaticCallsThroughInstance | If set to `true`, changes static invocations with the instance indirection `Service.doThing()` becomes `Service.instance().doThing()`.                                  |
 | extractServiceInterface          | When set to `true`, creates an interface (IService) with all public methods from the Service class. The Service class will implement this interface, and the `instance()` method will return the interface type. **Note:** The interface is currently added to the same file as the Service class (not a separate file). |
 
