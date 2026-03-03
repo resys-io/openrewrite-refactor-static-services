@@ -4,8 +4,14 @@
 
 *   Java 21
 *   Maven
+*   sdkman
 
 ## Build
+
+Choose active JDK
+```
+sdk env
+```
 
 To build the project, run:
 
