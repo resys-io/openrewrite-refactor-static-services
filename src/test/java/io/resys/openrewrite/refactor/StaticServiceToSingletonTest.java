@@ -564,6 +564,69 @@ class StaticServiceToSingletonTest implements RewriteTest {
     }
 
     @Test
+    void configureViaYaml() {
+        rewriteRun(
+            spec -> spec.recipeFromYaml(
+                "---\n" +
+                "type: specs.openrewrite.org/v1beta/recipe\n" +
+                "name: com.example.TestRecipe\n" +
+                "displayName: Test Recipe\n" +
+                "description: Test recipe for YAML configuration.\n" +
+                "recipeList:\n" +
+                "  - io.resys.openrewrite.refactor.StaticServiceToSingleton:\n" +
+                "      serviceClassName: com.example.Service\n" +
+                "      addDefaultConstructorToConsumers: true\n",
+                "com.example.TestRecipe"
+            ).expectedCyclesThatMakeChanges(2).typeValidationOptions(TypeValidation.none()),
+            java(
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    public static void action() { }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    private static final Service INSTANCE = new Service();\n" +
+                "\n" +
+                "    public void action() {\n" +
+                "    }\n" +
+                "\n" +
+                "    public static Service instance() {\n" +
+                "        return INSTANCE;\n" +
+                "    }\n" +
+                "}"
+            ),
+            java(
+                "package com.example;\n" +
+                "\n" +
+                "class ServiceConsumer {\n" +
+                "    public void doThing() {\n" +
+                "        Service.action();\n" +
+                "    }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class ServiceConsumer {\n" +
+                "    private final Service service;\n" +
+                "\n" +
+                "    public ServiceConsumer(Service service) {\n" +
+                "        this.service = service;\n" +
+                "    }\n" +
+                "\n" +
+                "    public ServiceConsumer() {\n" +
+                "        this(Service.instance());\n" +
+                "    }\n" +
+                "\n" +
+                "    public void doThing() {\n" +
+                "        service.action();\n" +
+                "    }\n" +
+                "}"
+            )
+        );
+    }
+
+    @Test
     void doNotTransformLambdaInStaticMethod() {
         rewriteRun(
           spec -> spec.expectedCyclesThatMakeChanges(1),
