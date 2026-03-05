@@ -136,4 +136,5 @@ Note: The interface type is used instead of the concrete Service type in consume
 | addDefaultConstructorToConsumers | Whether a default constructor should be added to consumer classes.                                                  |
 | changeStaticCallsThroughInstance | If set to `true`, changes static invocations with the instance indirection `Service.doThing()` becomes `Service.instance().doThing()`.                                  |
 | extractServiceInterface          | When set to `true`, creates an interface (IService) with all public methods from the Service class. The Service class will implement this interface, and the `instance()` method will return the interface type. **Note:** The interface is currently added to the same file as the Service class (not a separate file). |
+| minimizeChanges                  | When set to `true`, skips the auto-formatting pass so that only structural AST changes are applied. Useful for reducing whitespace-only diffs. |
 

@@ -58,6 +58,7 @@ class ServiceConsumer {
 | `addDefaultConstructorToConsumers` | no     | When `true`, adds a no-arg constructor to consumer classes that delegates to `Service.instance()`. Default: `false`. |
 | `changeStaticCallsThroughInstance` | no     | When `true`, static method calls that appear inside `static` methods of consumer classes are rewritten as `Service.instance().method()` instead of being left unchanged. Default: `false`. |
 | `extractServiceInterface`        | no       | When `true`, generates an `IService` interface with all public method signatures, makes `Service` implement it, and uses the interface type in consumer classes. Default: `false`. |
+| `minimizeChanges`                | no       | When `true`, skips the auto-formatting pass so that only structural AST changes are written. Useful for keeping diffs free of whitespace-only noise. Default: `false`. |
 
 ## Usage
 
@@ -116,7 +117,8 @@ StaticServiceToSingleton recipe = new StaticServiceToSingleton(
     "javax.inject.Inject",          // annotateConstructors
     true,                           // addDefaultConstructorToConsumers
     false,                          // changeStaticCallsThroughInstance
-    false                           // extractServiceInterface
+    false,                          // extractServiceInterface
+    false                           // minimizeChanges
 );
 ```
 
