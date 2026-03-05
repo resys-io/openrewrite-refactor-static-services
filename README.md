@@ -83,10 +83,15 @@ Add the plugin to the project you want to migrate:
     <activeRecipes>
       <recipe>io.resys.openrewrite.refactor.StaticServiceToSingleton</recipe>
     </activeRecipes>
-    <recipeArtifactCoordinates>
-      io.resys.openrewrite:openrewrite-refactor-static-services:1.0-SNAPSHOT
-    </recipeArtifactCoordinates>
   </configuration>
+  <dependencies>
+    <dependency>
+      <groupId>io.github.resys-io</groupId>
+      <artifactId>openrewrite-refactor-static-services</artifactId>
+      <version>1.0.0-SNAPSHOT</version>
+    </dependency>
+  </dependencies>
+
 </plugin>
 ```
 
