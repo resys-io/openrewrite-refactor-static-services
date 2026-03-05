@@ -802,4 +802,39 @@ class StaticServiceToSingletonTest implements RewriteTest {
             )
         );
     }
+    @Test
+    void selfInvokedStaticCall() {
+        rewriteRun(
+          spec -> spec.expectedCyclesThatMakeChanges(1),
+          java(
+              "package com.example;\n" +
+              "\n" +
+              "class Service {\n" +
+              "  public static void execute1() {\n" +
+              "    execute2();\n" +
+              "  }\n" +
+              "  public static void execute2() {\n" +
+              "    Service.execute1();\n" +
+              "  }\n" +
+              "}",
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    private static final Service INSTANCE = new Service();\n" +
+                "\n" +
+                "    public void execute1() {\n" +
+                "        execute2();\n" +
+                "    }\n" +
+                "\n" +
+                "    public void execute2() {\n" +
+                "        execute1();\n" +
+                "    }\n" +
+                "\n" +
+                "    public static Service instance() {\n" +
+                "        return INSTANCE;\n" +
+                "    }\n" +
+                "}"
+          )
+        );
+    }
 }

@@ -271,6 +271,22 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
                     statements.add(s);
                 }
 
+                // 2b. Rewrite self-calls: Service.method() → method() in all method bodies
+                statements = ListUtils.map(statements, s -> {
+                    if (!(s instanceof J.MethodDeclaration)) return s;
+                    return (Statement) new JavaIsoVisitor<ExecutionContext>() {
+                        @Override
+                        public J.MethodInvocation visitMethodInvocation(J.MethodInvocation method, ExecutionContext ctx) {
+                            if (method.getSelect() instanceof J.Identifier
+                                    && ((J.Identifier) method.getSelect()).getSimpleName().equals(simpleName)
+                                    && !method.getSimpleName().equals("instance")) {
+                                return method.withSelect(null);
+                            }
+                            return super.visitMethodInvocation(method, ctx);
+                        }
+                    }.visitNonNull((J.MethodDeclaration) s, ctx, getCursor());
+                });
+
                 // 3. Add instance() method
                 String returnType = Boolean.TRUE.equals(extractServiceInterface) ? interfaceName : simpleName;
                 String annotation = annotateMethods != null ? "@" + annotateMethods.substring(annotateMethods.lastIndexOf('.') + 1) + "\n" : "";
