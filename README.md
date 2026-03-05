@@ -59,6 +59,7 @@ class ServiceConsumer {
 | `changeStaticCallsThroughInstance` | no     | When `true`, static method calls that appear inside `static` methods of consumer classes are rewritten as `Service.instance().method()` instead of being left unchanged. Default: `false`. |
 | `extractServiceInterface`        | no       | When `true`, generates an `IService` interface with all public method signatures, makes `Service` implement it, and uses the interface type in consumer classes. Default: `false`. |
 | `minimizeChanges`                | no       | When `true`, skips the auto-formatting pass so that only structural AST changes are written. Useful for keeping diffs free of whitespace-only noise. Default: `false`. |
+| `targetVisibilities`             | no       | List of visibility scopes that select which static methods on the Service class are de-staticified. Accepted values: `ALL`, `PUBLIC`, `PROTECTED`, `PRIVATE`, `PACKAGE`. Multiple values may be combined. Regardless of this setting, the extracted interface only includes `PUBLIC` methods. Default: `PUBLIC`. |
 
 ## Usage
 
@@ -118,7 +119,8 @@ StaticServiceToSingleton recipe = new StaticServiceToSingleton(
     true,                           // addDefaultConstructorToConsumers
     false,                          // changeStaticCallsThroughInstance
     false,                          // extractServiceInterface
-    false                           // minimizeChanges
+    false,                          // minimizeChanges
+    null                            // targetVisibilities (null = default PUBLIC)
 );
 ```
 
@@ -262,6 +264,49 @@ class ServiceConsumer {
     }
 }
 ```
+
+### With targetVisibilities
+
+By default only `public static` methods are converted. Use `targetVisibilities` to include other scopes:
+
+```yaml
+- io.resys.openrewrite.refactor.StaticServiceToSingleton:
+    serviceClassName: com.example.Service
+    targetVisibilities:
+      - PUBLIC
+      - PROTECTED
+```
+
+```java
+// Before
+class Service {
+    public static void publicAction() { }
+    protected static void protectedAction() { }
+    static void packageAction() { }        // not targeted
+}
+
+// After
+class Service {
+    private static final Service INSTANCE = new Service();
+
+    public static Service instance() {
+        return INSTANCE;
+    }
+
+    public void publicAction() { }
+    protected void protectedAction() { }   // de-staticified
+    static void packageAction() { }        // left unchanged
+}
+```
+
+Use `ALL` to target every static method regardless of visibility:
+
+```yaml
+targetVisibilities:
+  - ALL
+```
+
+Note: the generated `IService` interface (when `extractServiceInterface: true`) always contains only `PUBLIC` methods, regardless of `targetVisibilities`.
 
 ## Behaviour notes
 

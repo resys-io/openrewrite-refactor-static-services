@@ -67,6 +67,14 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
     @Nullable
     Boolean minimizeChanges;
 
+    @Option(displayName = "Target visibilities",
+            description = "Selects which static methods on the Service to modify based on their current visibility. " +
+                    "Accepted values: ALL, PUBLIC, PROTECTED, PRIVATE, PACKAGE. " +
+                    "Regardless of this setting, the extracted interface only includes PUBLIC methods. Default: PUBLIC.",
+            required = false)
+    @Nullable
+    List<String> targetVisibilities;
+
     @JsonCreator
     public StaticServiceToSingleton(
             @JsonProperty("serviceClassName") String serviceClassName,
@@ -75,7 +83,8 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
             @JsonProperty("addDefaultConstructorToConsumers") @Nullable Boolean addDefaultConstructorToConsumers,
             @JsonProperty("changeStaticCallsThroughInstance") @Nullable Boolean changeStaticCallsThroughInstance,
             @JsonProperty("extractServiceInterface") @Nullable Boolean extractServiceInterface,
-            @JsonProperty("minimizeChanges") @Nullable Boolean minimizeChanges) {
+            @JsonProperty("minimizeChanges") @Nullable Boolean minimizeChanges,
+            @JsonProperty("targetVisibilities") @Nullable List<String> targetVisibilities) {
         super();
         this.serviceClassName = serviceClassName;
         this.annotateMethods = annotateMethods;
@@ -84,6 +93,27 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
         this.changeStaticCallsThroughInstance = changeStaticCallsThroughInstance;
         this.extractServiceInterface = extractServiceInterface;
         this.minimizeChanges = minimizeChanges;
+        this.targetVisibilities = targetVisibilities;
+    }
+
+    private boolean isTargetedVisibility(J.MethodDeclaration md) {
+        List<String> effective = (targetVisibilities != null && !targetVisibilities.isEmpty())
+                ? targetVisibilities : Collections.singletonList("PUBLIC");
+        for (String v : effective) {
+            switch (v) {
+                case "ALL": return true;
+                case "PUBLIC": if (md.hasModifier(J.Modifier.Type.Public)) return true; break;
+                case "PROTECTED": if (md.hasModifier(J.Modifier.Type.Protected)) return true; break;
+                case "PRIVATE": if (md.hasModifier(J.Modifier.Type.Private)) return true; break;
+                case "PACKAGE":
+                    if (!md.hasModifier(J.Modifier.Type.Public)
+                            && !md.hasModifier(J.Modifier.Type.Protected)
+                            && !md.hasModifier(J.Modifier.Type.Private)) return true;
+                    break;
+                default: break;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -226,7 +256,7 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
                 for (Statement s : cd.getBody().getStatements()) {
                     if (s instanceof J.MethodDeclaration) {
                         J.MethodDeclaration md = (J.MethodDeclaration) s;
-                        if (md.hasModifier(J.Modifier.Type.Public) && md.hasModifier(J.Modifier.Type.Static) && !md.getSimpleName().equals("instance")) {
+                        if (isTargetedVisibility(md) && md.hasModifier(J.Modifier.Type.Static) && !md.getSimpleName().equals("instance")) {
 
                             md = md.withModifiers(ListUtils.map(md.getModifiers(), m -> m.getType() == J.Modifier.Type.Static ? null : m));
                             if (md.getMethodType() != null) {

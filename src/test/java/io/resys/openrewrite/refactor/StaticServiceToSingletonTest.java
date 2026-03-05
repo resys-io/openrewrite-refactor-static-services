@@ -5,13 +5,15 @@ import org.openrewrite.test.RecipeSpec;
 import org.openrewrite.test.RewriteTest;
 import org.openrewrite.test.TypeValidation;
 
+import java.util.Arrays;
+
 import static org.openrewrite.java.Assertions.java;
 
 class StaticServiceToSingletonTest implements RewriteTest {
 
     @Override
     public void defaults(RecipeSpec spec) {
-        spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, null, null, null))
+        spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, null, null, null, null))
           .expectedCyclesThatMakeChanges(2)
             .typeValidationOptions(TypeValidation.none());
     }
@@ -147,7 +149,7 @@ class StaticServiceToSingletonTest implements RewriteTest {
     @Test
     void refactorWithAnnotations() {
         rewriteRun(
-            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", "javax.inject.Singleton", "javax.inject.Inject", true, null, null, null)),
+            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", "javax.inject.Singleton", "javax.inject.Inject", true, null, null, null, null)),
             java(
                 "package com.example;\n" +
                 "\n" +
@@ -201,7 +203,7 @@ class StaticServiceToSingletonTest implements RewriteTest {
     @Test
     void changeStaticCallsThroughInstance() {
         rewriteRun(
-            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, true, null, null)),
+            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, true, null, null, null)),
             java(
                 "package com.example;\n" +
                 "\n" +
@@ -389,7 +391,7 @@ class StaticServiceToSingletonTest implements RewriteTest {
     @Test
     void extractServiceInterface() {
         rewriteRun(
-            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, null, true, null)),
+            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, null, true, null, null)),
             java(
                 "package com.example;\n" +
                 "\n" +
@@ -631,7 +633,7 @@ class StaticServiceToSingletonTest implements RewriteTest {
         // With minimizeChanges=true, AutoFormat is skipped — structural changes still apply
         // but whitespace is not normalized by a separate AutoFormat pass.
         rewriteRun(
-            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, null, null, true))
+            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, null, null, true, null))
                         .expectedCyclesThatMakeChanges(1),
             java(
                 "package com.example;\n" +
@@ -682,6 +684,119 @@ class StaticServiceToSingletonTest implements RewriteTest {
                 "class ServiceConsumer {\n" +
                 "    public static void staticMethod() {\n" +
                 "        Runnable r = () -> Service.action();\n" +
+                "    }\n" +
+                "}"
+            )
+        );
+    }
+
+    @Test
+    void targetVisibilitiesAll() {
+        rewriteRun(
+            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, null, null, null,
+                                    Arrays.asList("ALL")))
+                        .expectedCyclesThatMakeChanges(1),
+            java(
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    public static void publicAction() { }\n" +
+                "    protected static void protectedAction() { }\n" +
+                "    static void packageAction() { }\n" +
+                "    private static void privateAction() { }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    private static final Service INSTANCE = new Service();\n" +
+                "\n" +
+                "    public void publicAction() {\n" +
+                "    }\n" +
+                "\n" +
+                "    protected void protectedAction() {\n" +
+                "    }\n" +
+                "\n" +
+                "    void packageAction() {\n" +
+                "    }\n" +
+                "\n" +
+                "    private void privateAction() {\n" +
+                "    }\n" +
+                "\n" +
+                "    public static Service instance() {\n" +
+                "        return INSTANCE;\n" +
+                "    }\n" +
+                "}"
+            )
+        );
+    }
+
+    @Test
+    void targetVisibilitiesPublicOnly() {
+        // Default behaviour: only public static methods are de-staticified
+        rewriteRun(
+            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, null, null, null,
+                                    Arrays.asList("PUBLIC")))
+                        .expectedCyclesThatMakeChanges(1),
+            java(
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    public static void publicAction() { }\n" +
+                "    protected static void protectedAction() { }\n" +
+                "    static void packageAction() { }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    private static final Service INSTANCE = new Service();\n" +
+                "\n" +
+                "    public void publicAction() {\n" +
+                "    }\n" +
+                "\n" +
+                "    protected static void protectedAction() {\n" +
+                "    }\n" +
+                "\n" +
+                "    static void packageAction() {\n" +
+                "    }\n" +
+                "\n" +
+                "    public static Service instance() {\n" +
+                "        return INSTANCE;\n" +
+                "    }\n" +
+                "}"
+            )
+        );
+    }
+
+    @Test
+    void targetVisibilitiesMultiple() {
+        rewriteRun(
+            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, null, null, null,
+                                    Arrays.asList("PUBLIC", "PROTECTED")))
+                        .expectedCyclesThatMakeChanges(1),
+            java(
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    public static void publicAction() { }\n" +
+                "    protected static void protectedAction() { }\n" +
+                "    static void packageAction() { }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    private static final Service INSTANCE = new Service();\n" +
+                "\n" +
+                "    public void publicAction() {\n" +
+                "    }\n" +
+                "\n" +
+                "    protected void protectedAction() {\n" +
+                "    }\n" +
+                "\n" +
+                "    static void packageAction() {\n" +
+                "    }\n" +
+                "\n" +
+                "    public static Service instance() {\n" +
+                "        return INSTANCE;\n" +
                 "    }\n" +
                 "}"
             )
