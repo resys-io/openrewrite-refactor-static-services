@@ -11,7 +11,7 @@ class StaticServiceToSingletonTest implements RewriteTest {
 
     @Override
     public void defaults(RecipeSpec spec) {
-        spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, null, null))
+        spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, null, null, null))
           .expectedCyclesThatMakeChanges(2)
             .typeValidationOptions(TypeValidation.none());
     }
@@ -147,7 +147,7 @@ class StaticServiceToSingletonTest implements RewriteTest {
     @Test
     void refactorWithAnnotations() {
         rewriteRun(
-            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", "javax.inject.Singleton", "javax.inject.Inject", true, null, null)),
+            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", "javax.inject.Singleton", "javax.inject.Inject", true, null, null, null)),
             java(
                 "package com.example;\n" +
                 "\n" +
@@ -201,7 +201,7 @@ class StaticServiceToSingletonTest implements RewriteTest {
     @Test
     void changeStaticCallsThroughInstance() {
         rewriteRun(
-            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, true, null)),
+            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, true, null, null)),
             java(
                 "package com.example;\n" +
                 "\n" +
@@ -389,7 +389,7 @@ class StaticServiceToSingletonTest implements RewriteTest {
     @Test
     void extractServiceInterface() {
         rewriteRun(
-            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, null, true)),
+            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, null, true, null)),
             java(
                 "package com.example;\n" +
                 "\n" +
@@ -620,6 +620,33 @@ class StaticServiceToSingletonTest implements RewriteTest {
                 "\n" +
                 "    public void doThing() {\n" +
                 "        service.action();\n" +
+                "    }\n" +
+                "}"
+            )
+        );
+    }
+
+    @Test
+    void minimizeChangesSkipsAutoFormat() {
+        // With minimizeChanges=true, AutoFormat is skipped — structural changes still apply
+        // but whitespace is not normalized by a separate AutoFormat pass.
+        rewriteRun(
+            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, null, null, true))
+                        .expectedCyclesThatMakeChanges(1),
+            java(
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    public static void action() { }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    private static final Service INSTANCE = new Service();\n" +
+                "    public void action() { }\n" +
+                "\n" +
+                "    public static Service instance() {\n" +
+                "        return INSTANCE;\n" +
                 "    }\n" +
                 "}"
             )

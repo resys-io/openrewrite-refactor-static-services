@@ -61,6 +61,12 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
     @Nullable
     Boolean extractServiceInterface;
 
+    @Option(displayName = "Minimize changes",
+            description = "When true, disables auto-formatting so only the structural changes are applied, reducing whitespace-only diffs.",
+            required = false)
+    @Nullable
+    Boolean minimizeChanges;
+
     @JsonCreator
     public StaticServiceToSingleton(
             @JsonProperty("serviceClassName") String serviceClassName,
@@ -68,7 +74,8 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
             @JsonProperty("annotateConstructors") @Nullable String annotateConstructors,
             @JsonProperty("addDefaultConstructorToConsumers") @Nullable Boolean addDefaultConstructorToConsumers,
             @JsonProperty("changeStaticCallsThroughInstance") @Nullable Boolean changeStaticCallsThroughInstance,
-            @JsonProperty("extractServiceInterface") @Nullable Boolean extractServiceInterface) {
+            @JsonProperty("extractServiceInterface") @Nullable Boolean extractServiceInterface,
+            @JsonProperty("minimizeChanges") @Nullable Boolean minimizeChanges) {
         super();
         this.serviceClassName = serviceClassName;
         this.annotateMethods = annotateMethods;
@@ -76,6 +83,7 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
         this.addDefaultConstructorToConsumers = addDefaultConstructorToConsumers;
         this.changeStaticCallsThroughInstance = changeStaticCallsThroughInstance;
         this.extractServiceInterface = extractServiceInterface;
+        this.minimizeChanges = minimizeChanges;
     }
 
     @Override
@@ -250,6 +258,7 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
                     cd = cd.withImplements(cdWithInterface.getImplements());
                 }
 
+                if (Boolean.TRUE.equals(minimizeChanges)) return cd;
                 return (J.ClassDeclaration) new AutoFormat(null).getVisitor().visit(cd, ctx, getCursor());
             }
 
@@ -347,7 +356,7 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
 
                 // If only static-context usage, no field/constructor changes needed
                 if (!foundUsageInNonStaticContext.get()) {
-                    doAfterVisit(new AutoFormat(null).getVisitor());
+                    if (!Boolean.TRUE.equals(minimizeChanges)) doAfterVisit(new AutoFormat(null).getVisitor());
                     return cd;
                 }
 
@@ -465,7 +474,7 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
                     })));
                 }
 
-                doAfterVisit(new AutoFormat(null).getVisitor());
+                if (!Boolean.TRUE.equals(minimizeChanges)) doAfterVisit(new AutoFormat(null).getVisitor());
                 return cd;
             }
         };
