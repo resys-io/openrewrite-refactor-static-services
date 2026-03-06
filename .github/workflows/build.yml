@@ -16,6 +16,7 @@ jobs:
         with:
           java-version: '8'
           distribution: 'temurin'
+          cache: "maven"
 
-      - name: Publish package
+      - name: Build application
         run: mvn --batch-mode verify
