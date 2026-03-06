@@ -39,14 +39,22 @@ public class ServiceLocatorInvocations extends Recipe {
     @Nullable
     String annotateConstructors;
 
+    @Option(displayName = "Minimize Changes",
+            description = "When set to `true`, skips the auto-formatting pass so that only structural AST changes are applied.",
+            required = false)
+    @Nullable
+    Boolean minimizeChanges;
+
     @JsonCreator
     public ServiceLocatorInvocations(
             @JsonProperty("methodPattern") String methodPattern,
             @JsonProperty("useConstructorInjection") @Nullable Boolean useConstructorInjection,
-            @JsonProperty("annotateConstructors") @Nullable String annotateConstructors) {
+            @JsonProperty("annotateConstructors") @Nullable String annotateConstructors,
+            @JsonProperty("minimizeChanges") @Nullable Boolean minimizeChanges) {
         this.methodPattern = methodPattern;
         this.useConstructorInjection = useConstructorInjection;
         this.annotateConstructors = annotateConstructors;
+        this.minimizeChanges = minimizeChanges;
     }
 
     @Override
@@ -128,7 +136,7 @@ public class ServiceLocatorInvocations extends Recipe {
                     classDecl = applyConstructorInjection(classDecl, serviceFields, ctx);
                 }
 
-                doAfterVisit(new AutoFormat(null).getVisitor());
+                if (!Boolean.TRUE.equals(minimizeChanges)) doAfterVisit(new AutoFormat(null).getVisitor());
                 return classDecl;
             }
 

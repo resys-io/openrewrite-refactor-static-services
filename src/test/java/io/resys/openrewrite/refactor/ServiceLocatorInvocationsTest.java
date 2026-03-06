@@ -26,7 +26,7 @@ class ServiceLocatorInvocationsTest implements RewriteTest {
 
     @Override
     public void defaults(RecipeSpec spec) {
-        spec.recipe(new ServiceLocatorInvocations("com.example.ServiceLocator getService(..)", null, null));
+        spec.recipe(new ServiceLocatorInvocations("com.example.ServiceLocator getService(..)", null, null, null));
     }
 
     @Test
@@ -190,7 +190,7 @@ class ServiceLocatorInvocationsTest implements RewriteTest {
     @Test
     void constructorInjectionWithNoExistingConstructor() {
         rewriteRun(
-                spec -> spec.recipe(new ServiceLocatorInvocations("com.example.ServiceLocator getService(..)", true, null))
+                spec -> spec.recipe(new ServiceLocatorInvocations("com.example.ServiceLocator getService(..)", true, null, null))
                         .typeValidationOptions(TypeValidation.none()),
                 java(SERVICE_LOCATOR),
                 java(SERVICE),
@@ -227,7 +227,7 @@ class ServiceLocatorInvocationsTest implements RewriteTest {
     @Test
     void constructorInjectionWithExistingConstructor() {
         rewriteRun(
-                spec -> spec.recipe(new ServiceLocatorInvocations("com.example.ServiceLocator getService(..)", true, null))
+                spec -> spec.recipe(new ServiceLocatorInvocations("com.example.ServiceLocator getService(..)", true, null, null))
                         .typeValidationOptions(TypeValidation.none()),
                 java(SERVICE_LOCATOR),
                 java(SERVICE),
@@ -272,7 +272,7 @@ class ServiceLocatorInvocationsTest implements RewriteTest {
     @Test
     void constructorInjectionWithAnnotation() {
         rewriteRun(
-                spec -> spec.recipe(new ServiceLocatorInvocations("com.example.ServiceLocator getService(..)", true, "javax.inject.Inject"))
+                spec -> spec.recipe(new ServiceLocatorInvocations("com.example.ServiceLocator getService(..)", true, "javax.inject.Inject", null))
                         .typeValidationOptions(TypeValidation.none()),
                 java(SERVICE_LOCATOR),
                 java(SERVICE),
