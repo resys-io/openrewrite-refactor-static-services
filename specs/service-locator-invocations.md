@@ -81,6 +81,7 @@ class ServiceConsumer {
     }
 
 }
+```
 
 ## Recipe Parameters
 
@@ -89,4 +90,4 @@ class ServiceConsumer {
 | methodPattern                    | The method pattern used to identify the service locator call (e.g. `com.example.ServiceLocator getService(..)`).     |
 | useConstructorInjection          | When set to `true`, services used in non-static contexts are injected via constructor instead of field initialization.|
 | annotateConstructors             | The fully qualified name of the annotation to be added to the modified constructor (e.g. `javax.inject.Inject`).    |
-```
+| minimizeChanges                  | When set to `true`, skips the auto-formatting pass so that only structural AST changes are applied.

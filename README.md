@@ -313,6 +313,111 @@ targetVisibilities:
 
 Note: the generated `IService` interface (when `extractServiceInterface: true`) always contains only `PUBLIC` methods, regardless of `targetVisibilities`.
 
+---
+
+## ServiceLocatorInvocations
+
+Refactors static Service Locator calls into class fields. It matches a configurable service locator method and promotes each local variable that holds the result into a field, deduplicating across methods.
+
+### What it does
+
+```java
+// Before
+class ServiceConsumer {
+    public void doThing() {
+        Service service = ServiceLocator.getService(Service.class);
+        service.serveMe();
+    }
+
+    public static void doThingStatic() {
+        Service2 service2 = ServiceLocator.getService(Service2.class);
+        service2.doServing();
+    }
+}
+
+// After
+class ServiceConsumer {
+    private final Service service = ServiceLocator.getService(Service.class);
+    private static final Service2 service2 = ServiceLocator.getService(Service2.class);
+
+    public void doThing() {
+        service.serveMe();
+    }
+
+    public static void doThingStatic() {
+        service2.doServing();
+    }
+}
+```
+
+- Lookups inside instance methods → `private final` instance field
+- Lookups inside static methods → `private static final` field
+- Multiple lookups of the same service in different methods → deduplicated into a single field
+- If a field with the same name already exists, it is reused (no duplicate field is created)
+
+### Parameters
+
+| Parameter               | Required | Description |
+|-------------------------|----------|-------------|
+| `methodPattern`         | yes      | Method pattern identifying the service locator call (e.g. `com.example.ServiceLocator getService(..)`). |
+| `useConstructorInjection` | no     | When `true`, instance-level services are injected via constructor instead of direct field initialization. Default: `false`. |
+| `annotateConstructors`  | no       | Fully qualified annotation name to add to the generated full constructor (e.g. `javax.inject.Inject`). Only used when `useConstructorInjection` is `true`. |
+
+### Constructor injection example
+
+```yaml
+- io.resys.openrewrite.refactor.ServiceLocatorInvocations:
+    methodPattern: com.example.ServiceLocator getService(..)
+    useConstructorInjection: true
+    annotateConstructors: javax.inject.Inject
+```
+
+```java
+// Before
+class ServiceConsumer {
+    public void doThing() {
+        Service service = ServiceLocator.getService(Service.class);
+        service.serveMe();
+    }
+}
+
+// After
+import javax.inject.Inject;
+
+class ServiceConsumer {
+    private final Service service;
+
+    @Inject
+    public ServiceConsumer(Service service) {
+        this.service = service;
+    }
+
+    public ServiceConsumer() {
+        this(ServiceLocator.getService(Service.class));
+    }
+
+    public void doThing() {
+        service.serveMe();
+    }
+}
+```
+
+When the class already has constructors, the constructor with the most parameters is augmented with the service as its first parameter, and the original signature is preserved as a delegating constructor.
+
+### YAML configuration
+
+```yaml
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: com.example.MyMigration
+displayName: Refactor ServiceLocator calls
+recipeList:
+  - io.resys.openrewrite.refactor.ServiceLocatorInvocations:
+      methodPattern: com.example.ServiceLocator getService(..)
+```
+
+---
+
 ## Behaviour notes
 
 - Static method calls inside `static` methods of consumer classes are **not** changed by default (the calling site cannot hold an injected field). Enable `changeStaticCallsThroughInstance` to handle those.
