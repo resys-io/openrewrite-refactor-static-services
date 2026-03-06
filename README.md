@@ -362,6 +362,7 @@ class ServiceConsumer {
 | `methodPattern`         | yes      | Method pattern identifying the service locator call (e.g. `com.example.ServiceLocator getService(..)`). |
 | `useConstructorInjection` | no     | When `true`, instance-level services are injected via constructor instead of direct field initialization. Default: `false`. |
 | `annotateConstructors`  | no       | Fully qualified annotation name to add to the generated full constructor (e.g. `javax.inject.Inject`). Only used when `useConstructorInjection` is `true`. |
+| `minimizeChanges`       | no       | When `true`, skips the auto-formatting pass so that only structural AST changes are applied. Useful for reducing whitespace-only diffs. Default: `false`. |
 
 ### Constructor injection example
 
