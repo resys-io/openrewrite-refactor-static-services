@@ -60,6 +60,9 @@ class ServiceConsumer {
 | `extractServiceInterface`        | no       | When `true`, generates an `IService` interface with all public method signatures, makes `Service` implement it, and uses the interface type in consumer classes. Default: `false`. |
 | `minimizeChanges`                | no       | When `true`, skips the auto-formatting pass so that only structural AST changes are written. Useful for keeping diffs free of whitespace-only noise. Default: `false`. |
 | `targetVisibilities`             | no       | List of visibility scopes that select which static methods on the Service class are de-staticified. Accepted values: `ALL`, `PUBLIC`, `PROTECTED`, `PRIVATE`, `PACKAGE`. Multiple values may be combined. Regardless of this setting, the extracted interface only includes `PUBLIC` methods. Default: `PUBLIC`. |
+| `updateFields`                   | no       | When `true`, removes `static` from **non-public** fields that are accessed (read or written) by de-staticified methods. Fields are skipped if they are `final` with an immutable type (`primitive`, `String`, `enum`) or their name is ALL_CAPS. Default: `false`. |
+| `updateWrittenFields`            | no       | When `true`, removes `static` from **public** fields that are **written** by de-staticified methods. No immutability/constant exceptions apply. Default: `false`. |
+| `updateAccessedFields`           | no       | When `true`, removes `static` from **public** fields that are accessed (read or written) by de-staticified methods. Fields are skipped if they are `final` with an immutable type (`primitive`, `String`, `enum`) or their name is ALL_CAPS. Default: `false`. |
 
 ## Usage
 

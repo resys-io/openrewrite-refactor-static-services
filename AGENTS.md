@@ -12,6 +12,7 @@ Choose active JDK
 ```
 sdk env
 ```
+This mean for refactoring legacy applications and therefore this needs to support Java 8.
 
 To build the project, run:
 

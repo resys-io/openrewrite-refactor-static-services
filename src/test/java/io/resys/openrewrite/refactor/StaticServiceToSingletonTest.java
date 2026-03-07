@@ -837,4 +837,123 @@ class StaticServiceToSingletonTest implements RewriteTest {
           )
         );
     }
+
+    @Test
+    void updateFieldsRemovesStaticFromNonPublicFieldsAccessedByDeStaticifiedMethods() {
+        rewriteRun(
+            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, null, null, null, null, true, null, null))
+                    .expectedCyclesThatMakeChanges(1),
+            java(
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    private static int counter = 0;\n" +               // accessed, non-public, non-final → remove static
+                "    static String cache = null;\n" +                   // accessed, package-private, non-final → remove static
+                "    private static final String CONSTANT = \"x\";\n" + // final + String (immutable) → skip
+                "    private static final int MAX = 10;\n" +            // final + primitive → skip
+                "    public static final String PUB = \"y\";\n" +       // public → not handled by updateFields
+                "\n" +
+                "    public static void action() {\n" +
+                "        counter++;\n" +
+                "        cache = \"x\";\n" +
+                "    }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    private static final Service INSTANCE = new Service();\n" +
+                "    private int counter = 0;\n" +
+                "    String cache = null;\n" +
+                "    private static final String CONSTANT = \"x\";\n" +
+                "    private static final int MAX = 10;\n" +
+                "    public static final String PUB = \"y\";\n" +
+                "\n" +
+                "    public void action() {\n" +
+                "        counter++;\n" +
+                "        cache = \"x\";\n" +
+                "    }\n" +
+                "\n" +
+                "    public static Service instance() {\n" +
+                "        return INSTANCE;\n" +
+                "    }\n" +
+                "}"
+            )
+        );
+    }
+
+    @Test
+    void updateWrittenFieldsRemovesStaticFromPublicFieldsWrittenByDeStaticifiedMethods() {
+        rewriteRun(
+            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, null, null, null, null, null, true, null))
+                    .expectedCyclesThatMakeChanges(1),
+            java(
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    public static int counter = 0;\n" +    // written → remove static
+                "    public static final int MAX = 10;\n" + // not written → keep
+                "    private static int hidden = 0;\n" +    // non-public → not handled by updateWrittenFields
+                "\n" +
+                "    public static void action() {\n" +
+                "        counter++;\n" +
+                "    }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    private static final Service INSTANCE = new Service();\n" +
+                "    public int counter = 0;\n" +
+                "    public static final int MAX = 10;\n" +
+                "    private static int hidden = 0;\n" +
+                "\n" +
+                "    public void action() {\n" +
+                "        counter++;\n" +
+                "    }\n" +
+                "\n" +
+                "    public static Service instance() {\n" +
+                "        return INSTANCE;\n" +
+                "    }\n" +
+                "}"
+            )
+        );
+    }
+
+    @Test
+    void updateAccessedFieldsRemovesStaticFromPublicFieldsAccessedByDeStaticifiedMethods() {
+        rewriteRun(
+            spec -> spec.recipe(new StaticServiceToSingleton("com.example.Service", null, null, true, null, null, null, null, null, null, true))
+                    .expectedCyclesThatMakeChanges(1),
+            java(
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    public static int counter = 0;\n" +           // accessed, public → remove static
+                "    public static final String NAME = \"x\";\n" + // final + String (immutable) → skip
+                "    public static final int MAX_SIZE = 10;\n" +   // ALL_CAPS → skip
+                "    private static int hidden = 0;\n" +           // non-public → not handled by updateAccessedFields
+                "\n" +
+                "    public static void action() {\n" +
+                "        counter++;\n" +
+                "    }\n" +
+                "}",
+                "package com.example;\n" +
+                "\n" +
+                "class Service {\n" +
+                "    private static final Service INSTANCE = new Service();\n" +
+                "    public int counter = 0;\n" +
+                "    public static final String NAME = \"x\";\n" +
+                "    public static final int MAX_SIZE = 10;\n" +
+                "    private static int hidden = 0;\n" +
+                "\n" +
+                "    public void action() {\n" +
+                "        counter++;\n" +
+                "    }\n" +
+                "\n" +
+                "    public static Service instance() {\n" +
+                "        return INSTANCE;\n" +
+                "    }\n" +
+                "}"
+            )
+        );
+    }
 }

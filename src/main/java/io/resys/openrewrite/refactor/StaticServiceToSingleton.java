@@ -75,6 +75,40 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
     @Nullable
     List<String> targetVisibilities;
 
+    @Option(displayName = "Update fields",
+            description = "When true, removes the static modifier from non-public fields accessed by de-staticified methods, " +
+                    "unless the field is final with an immutable type (primitive, String, enum) or its name is all-capitals.",
+            required = false)
+    @Nullable
+    Boolean updateFields;
+
+    @Option(displayName = "Update written fields",
+            description = "When true, removes the static modifier from public fields that are written by de-staticified methods.",
+            required = false)
+    @Nullable
+    Boolean updateWrittenFields;
+
+    @Option(displayName = "Update accessed fields",
+            description = "When true, removes the static modifier from public fields accessed by de-staticified methods, " +
+                    "unless the field is final with an immutable type (primitive, String, enum) or its name is all-capitals.",
+            required = false)
+    @Nullable
+    Boolean updateAccessedFields;
+
+    public StaticServiceToSingleton(
+            String serviceClassName,
+            @Nullable String annotateMethods,
+            @Nullable String annotateConstructors,
+            @Nullable Boolean addDefaultConstructorToConsumers,
+            @Nullable Boolean changeStaticCallsThroughInstance,
+            @Nullable Boolean extractServiceInterface,
+            @Nullable Boolean minimizeChanges,
+            @Nullable List<String> targetVisibilities) {
+        this(serviceClassName, annotateMethods, annotateConstructors, addDefaultConstructorToConsumers,
+                changeStaticCallsThroughInstance, extractServiceInterface, minimizeChanges,
+                targetVisibilities, null, null, null);
+    }
+
     @JsonCreator
     public StaticServiceToSingleton(
             @JsonProperty("serviceClassName") String serviceClassName,
@@ -84,7 +118,10 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
             @JsonProperty("changeStaticCallsThroughInstance") @Nullable Boolean changeStaticCallsThroughInstance,
             @JsonProperty("extractServiceInterface") @Nullable Boolean extractServiceInterface,
             @JsonProperty("minimizeChanges") @Nullable Boolean minimizeChanges,
-            @JsonProperty("targetVisibilities") @Nullable List<String> targetVisibilities) {
+            @JsonProperty("targetVisibilities") @Nullable List<String> targetVisibilities,
+            @JsonProperty("updateFields") @Nullable Boolean updateFields,
+            @JsonProperty("updateWrittenFields") @Nullable Boolean updateWrittenFields,
+            @JsonProperty("updateAccessedFields") @Nullable Boolean updateAccessedFields) {
         super();
         this.serviceClassName = serviceClassName;
         this.annotateMethods = annotateMethods;
@@ -94,6 +131,9 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
         this.extractServiceInterface = extractServiceInterface;
         this.minimizeChanges = minimizeChanges;
         this.targetVisibilities = targetVisibilities;
+        this.updateFields = updateFields;
+        this.updateWrittenFields = updateWrittenFields;
+        this.updateAccessedFields = updateAccessedFields;
     }
 
     private boolean isTargetedVisibility(J.MethodDeclaration md) {
@@ -245,6 +285,8 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
                         .anyMatch(vd -> vd.getVariables().stream().anyMatch(v -> v.getSimpleName().equals("INSTANCE")));
                 if (hasInstanceField) return cd;
 
+                Set<String> fieldsToDeStaticify = computeFieldsToDeStaticify(cd);
+
                 List<Statement> statements = new ArrayList<>();
 
                 // 1. Add INSTANCE field
@@ -252,7 +294,7 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
                         .contextSensitive().build().apply(getCursor(), cd.getBody().getCoordinates().firstStatement());
                 statements.add(cdWithInstance.getBody().getStatements().get(0));
 
-                // 2. Process existing methods
+                // 2. Process existing methods and de-staticify fields
                 for (Statement s : cd.getBody().getStatements()) {
                     if (s instanceof J.MethodDeclaration) {
                         J.MethodDeclaration md = (J.MethodDeclaration) s;
@@ -266,6 +308,12 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
                             }
                             statements.add(md);
                             continue;
+                        }
+                    }
+                    if (!fieldsToDeStaticify.isEmpty() && s instanceof J.VariableDeclarations) {
+                        J.VariableDeclarations vd = (J.VariableDeclarations) s;
+                        if (vd.getVariables().stream().anyMatch(v -> fieldsToDeStaticify.contains(v.getSimpleName()))) {
+                            s = vd.withModifiers(ListUtils.map(vd.getModifiers(), m -> m.getType() == J.Modifier.Type.Static ? null : m));
                         }
                     }
                     statements.add(s);
@@ -336,6 +384,111 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
                     cursor = cursor.getParent();
                 }
                 return false;
+            }
+
+            private boolean isAllCaps(String name) {
+                if (name.isEmpty()) return false;
+                for (char c : name.toCharArray()) {
+                    if (!Character.isUpperCase(c) && c != '_' && !Character.isDigit(c)) return false;
+                }
+                return true;
+            }
+
+            private boolean isImmutableFinalField(J.VariableDeclarations vd) {
+                if (!vd.hasModifier(J.Modifier.Type.Final)) return false;
+                JavaType type = vd.getType();
+                if (type instanceof JavaType.Primitive) return true;
+                if (type instanceof JavaType.FullyQualified) {
+                    JavaType.FullyQualified fq = (JavaType.FullyQualified) type;
+                    if ("java.lang.String".equals(fq.getFullyQualifiedName())) return true;
+                    if (fq.getKind() == JavaType.FullyQualified.Kind.Enum) return true;
+                }
+                return false;
+            }
+
+            /** Returns field names whose static modifier should be removed, based on the updateFields/updateWrittenFields/updateAccessedFields options. */
+            private Set<String> computeFieldsToDeStaticify(J.ClassDeclaration cd) {
+                if (!Boolean.TRUE.equals(updateFields) && !Boolean.TRUE.equals(updateWrittenFields) && !Boolean.TRUE.equals(updateAccessedFields)) {
+                    return Collections.emptySet();
+                }
+
+                // Collect static fields
+                Map<String, J.VariableDeclarations> staticFields = new LinkedHashMap<>();
+                for (Statement s : cd.getBody().getStatements()) {
+                    if (s instanceof J.VariableDeclarations) {
+                        J.VariableDeclarations vd = (J.VariableDeclarations) s;
+                        if (vd.hasModifier(J.Modifier.Type.Static)) {
+                            for (J.VariableDeclarations.NamedVariable v : vd.getVariables()) {
+                                staticFields.put(v.getSimpleName(), vd);
+                            }
+                        }
+                    }
+                }
+                if (staticFields.isEmpty()) return Collections.emptySet();
+
+                Set<String> accessed = new HashSet<>();
+                Set<String> written = new HashSet<>();
+
+                for (Statement s : cd.getBody().getStatements()) {
+                    if (!(s instanceof J.MethodDeclaration)) continue;
+                    J.MethodDeclaration md = (J.MethodDeclaration) s;
+                    if (!isTargetedVisibility(md) || !md.hasModifier(J.Modifier.Type.Static)
+                            || md.getSimpleName().equals("instance") || md.getBody() == null) continue;
+
+                    new JavaIsoVisitor<Void>() {
+                        @Override
+                        public J.Assignment visitAssignment(J.Assignment assignment, Void v) {
+                            if (assignment.getVariable() instanceof J.Identifier) {
+                                String name = ((J.Identifier) assignment.getVariable()).getSimpleName();
+                                if (staticFields.containsKey(name)) { written.add(name); accessed.add(name); }
+                            }
+                            return super.visitAssignment(assignment, v);
+                        }
+                        @Override
+                        public J.AssignmentOperation visitAssignmentOperation(J.AssignmentOperation assignment, Void v) {
+                            if (assignment.getVariable() instanceof J.Identifier) {
+                                String name = ((J.Identifier) assignment.getVariable()).getSimpleName();
+                                if (staticFields.containsKey(name)) { written.add(name); accessed.add(name); }
+                            }
+                            return super.visitAssignmentOperation(assignment, v);
+                        }
+                        @Override
+                        public J.Unary visitUnary(J.Unary unary, Void v) {
+                            if ((unary.getOperator() == J.Unary.Type.PreIncrement || unary.getOperator() == J.Unary.Type.PreDecrement
+                                    || unary.getOperator() == J.Unary.Type.PostIncrement || unary.getOperator() == J.Unary.Type.PostDecrement)
+                                    && unary.getExpression() instanceof J.Identifier) {
+                                String name = ((J.Identifier) unary.getExpression()).getSimpleName();
+                                if (staticFields.containsKey(name)) { written.add(name); accessed.add(name); }
+                            }
+                            return super.visitUnary(unary, v);
+                        }
+                        @Override
+                        public J.Identifier visitIdentifier(J.Identifier identifier, Void v) {
+                            String name = identifier.getSimpleName();
+                            if (staticFields.containsKey(name)) accessed.add(name);
+                            return identifier;
+                        }
+                    }.visit(md.getBody(), null);
+                }
+
+                Set<String> toDeStaticify = new HashSet<>();
+                for (String name : accessed) {
+                    J.VariableDeclarations vd = staticFields.get(name);
+                    boolean isPublic = vd.hasModifier(J.Modifier.Type.Public);
+                    boolean isWritten = written.contains(name);
+                    boolean skipConstantOrImmutable = isAllCaps(name) || isImmutableFinalField(vd);
+
+                    if (!isPublic && Boolean.TRUE.equals(updateFields) && !skipConstantOrImmutable) {
+                        toDeStaticify.add(name);
+                    }
+                    if (isPublic && Boolean.TRUE.equals(updateWrittenFields) && isWritten) {
+                        toDeStaticify.add(name);
+                    }
+                    if (isPublic && Boolean.TRUE.equals(updateAccessedFields) && !skipConstantOrImmutable) {
+                        toDeStaticify.add(name);
+                    }
+                }
+                return toDeStaticify;
             }
 
             private J.ClassDeclaration refactorConsumerClass(J.ClassDeclaration cd, ExecutionContext ctx) {
