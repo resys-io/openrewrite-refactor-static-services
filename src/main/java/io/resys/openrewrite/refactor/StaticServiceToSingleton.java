@@ -400,8 +400,23 @@ public class StaticServiceToSingleton extends ScanningRecipe<StaticServiceToSing
                 if (type instanceof JavaType.Primitive) return true;
                 if (type instanceof JavaType.FullyQualified) {
                     JavaType.FullyQualified fq = (JavaType.FullyQualified) type;
-                    if ("java.lang.String".equals(fq.getFullyQualifiedName())) return true;
                     if (fq.getKind() == JavaType.FullyQualified.Kind.Enum) return true;
+                    switch (fq.getFullyQualifiedName()) {
+                        case "java.lang.String":
+                        case "java.lang.Byte":
+                        case "java.lang.Short":
+                        case "java.lang.Integer":
+                        case "java.lang.Long":
+                        case "java.lang.Float":
+                        case "java.lang.Double":
+                        case "java.lang.Boolean":
+                        case "java.lang.Character":
+                        case "java.lang.Void":
+                        case "java.math.BigInteger":
+                        case "java.math.BigDecimal":
+                        case "java.util.UUID":
+                            return true;
+                    }
                 }
                 return false;
             }
