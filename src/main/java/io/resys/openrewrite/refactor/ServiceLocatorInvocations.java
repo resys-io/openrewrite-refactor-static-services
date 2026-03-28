@@ -265,8 +265,10 @@ public class ServiceLocatorInvocations extends Recipe {
                 return (J.ClassDeclaration) new JavaIsoVisitor<ExecutionContext>() {
                     @Override
                     public J.Block visitBlock(J.Block block, ExecutionContext ctx) {
-                        Cursor blockParent = getCursor().getParent();
-                        if (blockParent == null || !(blockParent.getValue() instanceof J.MethodDeclaration)) {
+                        // Only remove from blocks that are inside a method, not in the class body or nested class
+                        Cursor methodOrClass = getCursor().dropParentUntil(
+                                v -> v instanceof J.MethodDeclaration || v instanceof J.ClassDeclaration);
+                        if (!(methodOrClass.getValue() instanceof J.MethodDeclaration)) {
                             return super.visitBlock(block, ctx);
                         }
                         J.Block updated = block.withStatements(ListUtils.map(block.getStatements(), stmt -> {
