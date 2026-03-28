@@ -422,13 +422,22 @@ public class ServiceLocatorInvocations extends Recipe {
 
                     J.MethodDeclaration mFull = m.withParameters(allParams).withId(Tree.randomId());
 
-                    // Prepend service assignments to constructor body
+                    // Prepend service assignments to constructor body, keeping super()/this() first
                     if (mFull.getBody() != null) {
+                        List<Statement> existing = mFull.getBody().getStatements();
                         List<Statement> bodyStmts = new ArrayList<>();
+                        int insertIdx = 0;
+                        if (!existing.isEmpty() && existing.get(0) instanceof J.MethodInvocation) {
+                            String firstName = ((J.MethodInvocation) existing.get(0)).getSimpleName();
+                            if ("super".equals(firstName) || "this".equals(firstName)) {
+                                bodyStmts.add(existing.get(0));
+                                insertIdx = 1;
+                            }
+                        }
                         for (Statement sa : serviceAssignments) {
                             bodyStmts.add(sa.withId(Tree.randomId()));
                         }
-                        bodyStmts.addAll(mFull.getBody().getStatements());
+                        bodyStmts.addAll(existing.subList(insertIdx, existing.size()));
                         mFull = mFull.withBody(mFull.getBody().withStatements(bodyStmts));
                     }
 

@@ -238,6 +238,7 @@ class ServiceLocatorInvocationsTest implements RewriteTest {
                         "    private String name;\n" +
                         "\n" +
                         "    ServiceConsumer(String name) {\n" +
+                        "        super();\n" +
                         "        this.name = name;\n" +
                         "    }\n" +
                         "\n" +
@@ -253,6 +254,7 @@ class ServiceLocatorInvocationsTest implements RewriteTest {
                         "    private String name;\n" +
                         "\n" +
                         "    ServiceConsumer(Service service, String name) {\n" +
+                        "        super();\n" +
                         "        this.service = service;\n" +
                         "        this.name = name;\n" +
                         "    }\n" +
