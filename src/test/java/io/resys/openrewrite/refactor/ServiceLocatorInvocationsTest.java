@@ -158,6 +158,44 @@ class ServiceLocatorInvocationsTest implements RewriteTest {
     }
 
     @Test
+    void replaceAllDifferentServices() {
+        rewriteRun(
+          java(SERVICE_LOCATOR),
+          java(SERVICE),
+          java(SERVICE2),
+          java(
+            "package com.example;\n" +
+              "\n" +
+              "class ServiceConsumer {\n" +
+              "    public void doThing() {\n" +
+              "        Service service = ServiceLocator.getService(Service.class);\n" +
+              "        service.serveMe();\n" +
+              "    }\n" +
+              "\n" +
+              "    public void doOtherThing() {\n" +
+              "        Service2 service = ServiceLocator.getService(Service2.class);\n" +
+              "        service.doServing();\n" +
+              "    }\n" +
+              "}",
+            "package com.example;\n" +
+              "\n" +
+              "class ServiceConsumer {\n" +
+              "    private final Service service = ServiceLocator.getService(Service.class);\n" +
+              "    private final Service2 service2 = ServiceLocator.getService(Service2.class);\n" +
+              "\n" +
+              "    public void doThing() {\n" +
+              "        service.serveMe();\n" +
+              "    }\n" +
+              "\n" +
+              "    public void doOtherThing() {\n" +
+              "        service2.doServing();\n" +
+              "    }\n" +
+              "}"
+          )
+        );
+    }
+
+    @Test
     void reuseExistingFieldWithSameName() {
         // When a class field with the same name already exists, no new field is created
         rewriteRun(

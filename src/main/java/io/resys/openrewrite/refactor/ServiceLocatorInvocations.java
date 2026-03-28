@@ -75,15 +75,18 @@ public class ServiceLocatorInvocations extends Recipe {
         final J.VariableDeclarations originalDecl;   // original AST node (carries type info)
         final String argKey;
         final boolean inStaticContext;
+        final java.util.UUID enclosingMethodId;
 
         LocalServiceVar(String varName, String typeStr, J.MethodInvocation invocation,
-                        J.VariableDeclarations originalDecl, String argKey, boolean inStaticContext) {
+                        J.VariableDeclarations originalDecl, String argKey, boolean inStaticContext,
+                        java.util.UUID enclosingMethodId) {
             this.varName = varName;
             this.typeStr = typeStr;
             this.invocation = invocation;
             this.originalDecl = originalDecl;
             this.argKey = argKey;
             this.inStaticContext = inStaticContext;
+            this.enclosingMethodId = enclosingMethodId;
         }
     }
 
@@ -128,6 +131,9 @@ public class ServiceLocatorInvocations extends Recipe {
                 // Phase 3: remove matched local variable declarations from method bodies
                 classDecl = removeLocalVarDecls(classDecl, ctx, outerCursor);
 
+                // Phase 3.5: rename identifiers in method bodies where the field name was derived from the type
+                classDecl = renameLocalVarReferences(classDecl, localVars, serviceFields, ctx, outerCursor);
+
                 // Phase 4: add new fields to the class (skipped if a field with same name already exists)
                 classDecl = addServiceFields(classDecl, serviceFields);
 
@@ -162,7 +168,7 @@ public class ServiceLocatorInvocations extends Recipe {
                                         ? "" : inv.getArguments().get(0).printTrimmed(outerCursor);
                                 String typeStr = multiVar.getTypeExpression() != null
                                         ? multiVar.getTypeExpression().printTrimmed(outerCursor) : "Object";
-                                result.add(new LocalServiceVar(namedVar.getSimpleName(), typeStr, inv, multiVar, argKey, inStaticCtx));
+                                result.add(new LocalServiceVar(namedVar.getSimpleName(), typeStr, inv, multiVar, argKey, inStaticCtx, enclosingMethod.getId()));
                             }
                         }
                         return super.visitVariableDeclarations(multiVar, ignored);
@@ -178,17 +184,81 @@ public class ServiceLocatorInvocations extends Recipe {
                         .map(J.VariableDeclarations.NamedVariable::getSimpleName)
                         .collect(Collectors.toSet());
 
+                Set<String> usedFieldNames = new HashSet<>(existingFieldNames);
                 Map<String, ServiceField> serviceFields = new LinkedHashMap<>();
                 for (LocalServiceVar lv : localVars) {
                     if (serviceFields.containsKey(lv.argKey)) continue;
                     boolean isStatic = localVars.stream()
                             .filter(v -> v.argKey.equals(lv.argKey))
                             .allMatch(v -> v.inStaticContext);
-                    ServiceField sf = new ServiceField(lv.varName, lv.typeStr, lv.invocation, lv.originalDecl, isStatic);
-                    sf.alreadyExists = existingFieldNames.contains(lv.varName);
+
+                    String fieldName = lv.varName;
+                    boolean alreadyExists = existingFieldNames.contains(fieldName);
+
+                    if (!alreadyExists && usedFieldNames.contains(fieldName)) {
+                        // Name conflict with another service field: derive a name from the type
+                        fieldName = deriveFieldName(lv.typeStr);
+                        String base = fieldName;
+                        int suffix = 2;
+                        while (usedFieldNames.contains(fieldName)) {
+                            fieldName = base + suffix++;
+                        }
+                    }
+                    usedFieldNames.add(fieldName);
+
+                    ServiceField sf = new ServiceField(fieldName, lv.typeStr, lv.invocation, lv.originalDecl, isStatic);
+                    sf.alreadyExists = alreadyExists;
                     serviceFields.put(lv.argKey, sf);
                 }
                 return serviceFields;
+            }
+
+            private String deriveFieldName(String typeStr) {
+                // Use the simple type name with a lowercase first character
+                int dot = typeStr.lastIndexOf('.');
+                String simple = dot >= 0 ? typeStr.substring(dot + 1) : typeStr;
+                int lt = simple.indexOf('<');
+                if (lt >= 0) simple = simple.substring(0, lt);
+                if (simple.isEmpty()) return "service";
+                return Character.toLowerCase(simple.charAt(0)) + simple.substring(1);
+            }
+
+            private J.ClassDeclaration renameLocalVarReferences(J.ClassDeclaration classDecl, List<LocalServiceVar> localVars,
+                                                                   Map<String, ServiceField> serviceFields,
+                                                                   ExecutionContext ctx, Cursor outerCursor) {
+                // Build per-method rename map: methodId -> (oldName -> newName) for vars whose field name changed
+                Map<java.util.UUID, Map<String, String>> renameMap = new HashMap<>();
+                for (LocalServiceVar lv : localVars) {
+                    ServiceField sf = serviceFields.get(lv.argKey);
+                    if (sf != null && !sf.fieldName.equals(lv.varName)) {
+                        renameMap.computeIfAbsent(lv.enclosingMethodId, k -> new HashMap<>())
+                                 .put(lv.varName, sf.fieldName);
+                    }
+                }
+                if (renameMap.isEmpty()) return classDecl;
+
+                return (J.ClassDeclaration) new JavaIsoVisitor<ExecutionContext>() {
+                    @Override
+                    public J.MethodDeclaration visitMethodDeclaration(J.MethodDeclaration method, ExecutionContext ctx) {
+                        Map<String, String> renames = renameMap.get(method.getId());
+                        if (renames == null || method.getBody() == null) {
+                            return super.visitMethodDeclaration(method, ctx);
+                        }
+                        J.Block newBody = (J.Block) new JavaIsoVisitor<Map<String, String>>() {
+                            @Override
+                            public J.Identifier visitIdentifier(J.Identifier identifier, Map<String, String> renames) {
+                                String newName = renames.get(identifier.getSimpleName());
+                                if (newName != null) {
+                                    JavaType.Variable newFieldType = identifier.getFieldType() != null
+                                            ? identifier.getFieldType().withName(newName) : null;
+                                    return identifier.withSimpleName(newName).withFieldType(newFieldType);
+                                }
+                                return super.visitIdentifier(identifier, renames);
+                            }
+                        }.visitNonNull(method.getBody(), renames, getCursor());
+                        return method.withBody(newBody);
+                    }
+                }.visitNonNull(classDecl, ctx, outerCursor.getParent());
             }
 
             private J.ClassDeclaration removeLocalVarDecls(J.ClassDeclaration classDecl, ExecutionContext ctx, Cursor outerCursor) {
@@ -238,6 +308,21 @@ public class ServiceLocatorInvocations extends Recipe {
                         .withPrefix(Space.EMPTY)
                         .withModifiers(mods)
                         .withLeadingAnnotations(Collections.emptyList());
+
+                // Rename the variable if the field name was derived from the type (name conflict resolution)
+                String originalVarName = original.getVariables().get(0).getSimpleName();
+                if (!sf.fieldName.equals(originalVarName)) {
+                    field = field.withVariables(ListUtils.map(field.getVariables(), v -> {
+                        J.Identifier nameId = v.getName();
+                        JavaType.Variable newVarType = v.getVariableType() != null
+                                ? v.getVariableType().withName(sf.fieldName) : null;
+                        JavaType.Variable newFieldType = nameId.getFieldType() != null
+                                ? nameId.getFieldType().withName(sf.fieldName) : null;
+                        return v.withName(nameId.withSimpleName(sf.fieldName).withFieldType(newFieldType))
+                                .withVariableType(newVarType)
+                                .withId(Tree.randomId());
+                    }));
+                }
 
                 // Strip initializer when constructor injection is used for instance fields
                 if (Boolean.TRUE.equals(useConstructorInjection) && !sf.isStatic) {
